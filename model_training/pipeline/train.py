@@ -92,7 +92,7 @@ def main(args):
         (output / "test.json").write_text(json.dumps(result,indent=2))
         return
     results = []
-    for name in ("yolo11n", "yolo11s"):
+    for name in args.models.split(","):
         destination = output / name
         last = destination / "weights/last.pt"
         result_path = destination / "validation.json"
@@ -133,4 +133,5 @@ if __name__ == "__main__":
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--test-checkpoint")
     parser.add_argument("--name", default="underwater", help="Camera view; the chosen weights become <name>_selected.pt")
+    parser.add_argument("--models", default="yolo11n,yolo11s", help="Comma-separated architectures to train and compare")
     main(parser.parse_args())

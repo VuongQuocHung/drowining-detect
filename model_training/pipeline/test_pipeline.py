@@ -89,6 +89,12 @@ class DatasetTest(unittest.TestCase):
             self.roboflow_fixture(root,"['Drowning', 'float', 'swimmer']")
             self.assertEqual(audit(root,output)["names"],["drowning","float","swimming"])
 
+    def test_roboflow_out_of_water_names(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)/"dataset"; output=Path(folder)/"prepared"
+            self.roboflow_fixture(root,"['Drowning', 'Person out of water', 'Swimming']")
+            self.assertEqual(audit(root,output)["names"],["drowning","out_of_water","swimming"])
+
     def test_unknown_class_names_need_explicit_rename(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder)/"dataset"; output=Path(folder)/"prepared"

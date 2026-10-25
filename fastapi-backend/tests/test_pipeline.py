@@ -57,6 +57,7 @@ class TrackingTest(unittest.TestCase):
         # Legacy two-class checkpoints keep working but can never yield struggling.
         self.assertEqual(labels({0:"drowning",1:"normal"}), ["drowning","swimming"])
         self.assertEqual(labels({0:"Drowning",1:"float",2:"swimmer"}), ["drowning","float","swimming"])
+        self.assertEqual(labels({0:"drowning",1:"out_of_water",2:"swimming"}), ["drowning","out_of_water","swimming"])
 
     def test_floating_objects_are_drawn_but_never_tracked(self):
         from app.detection import track_with_deepsort

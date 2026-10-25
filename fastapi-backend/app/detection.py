@@ -8,7 +8,7 @@ from utils.data_utils import preprocess, deprocess
 
 realtime_metrics = {"processing_speed_ms": 0., "real_time_speed_fps": 0., "latency_per_frame_ms": 0., "last_updated": 0.}
 CLASS_COLORS = {"swimming": (0, 200, 0), "struggling": (0, 200, 255), "drowning": (0, 0, 255),
-                "float": (255, 160, 0), "unknown": (128, 128, 128)}
+                "float": (255, 160, 0), "out_of_water": (200, 0, 200), "unknown": (128, 128, 128)}
 
 def play_alarm_sound():
     if not settings.backend_alarm:

@@ -12,10 +12,13 @@ from PIL import Image, ImageDraw, ImageOps
 from tqdm import tqdm
 import yaml
 
-# Internal labels understood by the backend; "float" is a non-person object that is never tracked or alerted.
-CANONICAL = ("swimming", "struggling", "drowning", "float")
-ALIASES = {"normal": "swimming", "swimmer": "swimming"}
-COLORS = {"swimming": "lime", "struggling": "yellow", "drowning": "red", "float": "deepskyblue"}
+# Internal labels understood by the backend; "float" (objects) and "out_of_water" (people on the
+# deck) are never tracked or alerted.
+CANONICAL = ("swimming", "struggling", "drowning", "float", "out_of_water")
+ALIASES = {"normal": "swimming", "swimmer": "swimming", "person out of water": "out_of_water",
+           "out of water": "out_of_water"}
+COLORS = {"swimming": "lime", "struggling": "yellow", "drowning": "red", "float": "deepskyblue",
+          "out_of_water": "violet"}
 SPLITS = {"train": "train", "val": "val", "valid": "val", "validation": "val", "test": "test"}
 SOURCE = "https://figshare.com/articles/dataset/Underwater_Drowning_Detection_Dataset/29497235?file=56039351"
 

@@ -38,10 +38,11 @@ class Settings:
 
 settings = Settings()
 
-# Non-person classes are drawn on frames but never tracked or alerted.
-OBJECT_CLASSES = ("float",)
+# Floating objects and people out of the water are drawn on frames but never tracked or alerted.
+OBJECT_CLASSES = ("float", "out_of_water")
 
 def normalize_class(name):
     value = str(name).strip().lower()
     return {"normal": "swimming", "swimmer": "swimming", "swimming": "swimming", "struggling": "struggling",
-            "drowning": "drowning", "float": "float"}.get(value, "unknown")
+            "drowning": "drowning", "float": "float", "out_of_water": "out_of_water",
+            "person out of water": "out_of_water", "out of water": "out_of_water"}.get(value, "unknown")

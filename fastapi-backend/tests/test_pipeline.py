@@ -5,8 +5,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from types import SimpleNamespace
+
 import cv2
 import numpy as np
+import torch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from app import routes
@@ -41,6 +44,18 @@ class TrackingTest(unittest.TestCase):
                 _, people = track_with_deepsort(None,frame.copy(),ds)
                 self.assertEqual(people,[])
             self.assertFalse(ds.tracker.tracks)
+
+    def test_checkpoint_class_names_map_to_internal_labels(self):
+        from app.detection import run_detection
+        def model(names):
+            boxes = [SimpleNamespace(xyxy=torch.tensor([[10., 10., 50., 90.]]), cls=torch.tensor([float(cid)]),
+                                     conf=torch.tensor([.8])) for cid in names]
+            return lambda frame, **kwargs: [SimpleNamespace(names=names, boxes=boxes)]
+        frame = np.zeros((120,120,3),dtype=np.uint8)
+        labels = lambda names: [d[4] for d in run_detection(model(names), frame)]
+        self.assertEqual(labels({0:"swimming",1:"struggling",2:"drowning"}), ["swimming","struggling","drowning"])
+        # Legacy two-class checkpoints keep working but can never yield struggling.
+        self.assertEqual(labels({0:"drowning",1:"normal"}), ["drowning","swimming"])
 
 class ApiTest(unittest.TestCase):
     def setUp(self):

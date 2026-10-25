@@ -6,6 +6,9 @@ const levelNames: Record<string, string> = {
   normal: 'Bình thường', suspected: 'Đang xác nhận', struggling_alert: 'Cảnh báo vùng vẫy',
   drowning_alert: 'Cảnh báo đuối nước', lost: 'Mất dấu — chưa rõ trạng thái',
 };
+const classNames: Record<string, string> = {
+  swimming: 'Bơi bình thường', struggling: 'Vùng vẫy', drowning: 'Đuối nước', unknown: 'Không rõ',
+};
 
 export default function DrowningDetection() {
   const [model, setModel] = useState('underwater');
@@ -137,7 +140,7 @@ export default function DrowningDetection() {
         {image && <p className="text-sm text-slate-600">Ảnh tĩnh: chỉ phân loại, không xác nhận cảnh báo theo thời gian.</p>}
         {!people.length && <p>Chưa có người được theo dõi; chưa thể kết luận an toàn.</p>}
         {people.map(person => <div key={person.track_id} className={`rounded p-3 border ${person.alert_level === 'drowning_alert' ? 'bg-red-100 border-red-500' : person.alert_level === 'struggling_alert' ? 'bg-yellow-100 border-yellow-500' : 'bg-slate-50'}`}>
-          <p className="font-semibold">ID {person.track_id} · {person.class}</p>
+          <p className="font-semibold">ID {person.track_id} · {classNames[person.class] || person.class}</p>
           <p>{person.alert_level ? levelNames[person.alert_level] || person.alert_level : 'Kết quả ảnh tĩnh'}</p>
           <p className="text-sm">Confidence: {person.confidence === null ? '—' : `${(person.confidence * 100).toFixed(1)}%`}</p>
         </div>)}

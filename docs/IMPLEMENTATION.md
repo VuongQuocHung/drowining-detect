@@ -49,11 +49,11 @@ Enhancement video cũng dùng chung worker và giới hạn một nguồn; endpo
 
 ## Kaggle: dữ liệu và huấn luyện
 
-Mở [Kaggle_Underwater.ipynb](../model_training/Kaggle_Underwater.ipynb), bật GPU, gắn dataset và source repo làm input rồi sửa CODE/DATASET. Notebook không đăng nhập Ultralytics Hub và không cần token trong code.
+Mở [Kaggle_Underwater.ipynb](../model_training/Kaggle_Underwater.ipynb) trên Kaggle, chọn Accelerator GPU (T4 x2 hoặc P100), bật Internet rồi Run All. Notebook tự sparse-clone thư mục `model_training/pipeline` từ GitHub và tải dataset Figshare (CC BY 4.0, ~1,6 GB) vào `/tmp`, nên không cần gắn input và dataset không bị lưu vào output. Notebook không đăng nhập Ultralytics Hub và không cần token trong code.
 
 Notebook dùng `requirements-kaggle.txt` để giữ Torch/TorchVision/CUDA có sẵn của Kaggle. Không dùng `requirements.txt` cục bộ trong Kaggle Python 3.13: TorchVision 0.20.1 và NumPy 1.26.4 không hỗ trợ Python này. Chạy cell kiểm tra GPU/NMS trước audit; phiên bản thực tế được lưu trong environment.json và installed-packages.txt. Muốn resume cần giữ môi trường tương thích với lần chạy trước. Requirements đầy đủ ở backend vẫn dành cho môi trường local Python 3.10/3.11.
 
-Dataset được mô tả có 5.613 ảnh và ba lớp, nhưng số lượng thực sẽ do audit xác minh. Audit kiểm tra ảnh/nhãn YOLO, class ID, tọa độ, box vượt ảnh; tạo preview, class counts, SHA256 pixel và dHash. Ảnh trùng chính xác giữa tập hoặc nhãn lỗi chặn chuẩn bị dữ liệu; ảnh gần trùng được liệt kê để rà soát. dHash là công cụ sàng lọc, không chứng minh hai ảnh độc lập.
+Dataset có 5.613 ảnh, ba lớp swimming/struggling/drowning, chia sẵn train 4.488 / val 1.125, không có test. Đã kiểm tra trước toàn bộ nhãn (25/10/2026): mỗi ảnh một box, 1.871 box mỗi lớp (train 1.496, val 375), không có nhãn lỗi; trùng ảnh giữa tập vẫn do audit xác minh trên Kaggle. Audit kiểm tra ảnh/nhãn YOLO, class ID, tọa độ, box vượt ảnh; tạo preview, class counts, SHA256 pixel và dHash. Ảnh trùng chính xác giữa tập hoặc nhãn lỗi chặn chuẩn bị dữ liệu; ảnh gần trùng được liệt kê để rà soát. dHash là công cụ sàng lọc, không chứng minh hai ảnh độc lập.
 
 Audit hiện hai thanh tiến trình: `[1/2] Images + labels` đếm ảnh và `[2/2] Duplicate scan` đếm các cặp đã duyệt (gồm cả cặp cùng split được bỏ qua), kèm số cặp trùng/gần trùng. Thanh hiển thị thời gian, tốc độ và ETA qua stderr để dùng được khi gọi bằng subprocess trong Kaggle. CLI chỉ in tóm tắt cuối; danh sách chi tiết nằm trong audit.json để tránh làm đầy output notebook.
 
@@ -70,7 +70,7 @@ Train YOLO11n và YOLO11s, imgsz640, tối đa100 epoch, patience15, seed42, bat
 
 Chọn bằng validation: giữ ứng viên có recall drowning cách tốt nhất ≤1 điểm phần trăm; tiếp tục giữ precision cách tốt nhất trong nhóm ≤1 điểm; chọn latency p50 thấp nhất. Đây là quy tắc cố định, không dùng kết quả test để đổi lựa chọn. Có test độc lập thì chạy một lần với `--test-checkpoint` trỏ checkpoint đã chọn. Không có test thì ghi rõ chỉ có validation.
 
-Download toàn bộ experiments, gồm `underwater_selected.pt`, selected/comparison/environment JSON, manifest, audit, plots và weights. Export `UNDERWATER_MODEL` trỏ file mới trước khi khởi động backend. Không ghi đè hai checkpoint gốc; bỏ biến này để rollback.
+Tải `underwater_results.zip` ở mục Output (gồm `underwater_selected.pt`, selected/comparison/environment JSON, manifest, audit, plots; bỏ các checkpoint epoch trung gian). Chép `underwater_selected.pt` vào `fastapi-backend/model/detection_model/`: backend tự dùng file này cho camera dưới nước, khi đó lớp struggling và cảnh báo vàng `struggling_alert` mới hoạt động. Xóa file để rollback về `underwaterModel.pt` (2 lớp). `UNDERWATER_MODEL` vẫn ghi đè được đường dẫn. Mô hình trên mặt nước vẫn 2 lớp vì chưa có dữ liệu struggling cho góc nhìn này.
 
 ## Đánh giá và nghiệm thu
 

@@ -56,6 +56,17 @@ class TrackingTest(unittest.TestCase):
         self.assertEqual(labels({0:"swimming",1:"struggling",2:"drowning"}), ["swimming","struggling","drowning"])
         # Legacy two-class checkpoints keep working but can never yield struggling.
         self.assertEqual(labels({0:"drowning",1:"normal"}), ["drowning","swimming"])
+        self.assertEqual(labels({0:"Drowning",1:"float",2:"swimmer"}), ["drowning","float","swimming"])
+
+    def test_floating_objects_are_drawn_but_never_tracked(self):
+        from app.detection import track_with_deepsort
+        ds, frame = tracker(), np.zeros((120,120,3),dtype=np.uint8)
+        with patch("app.detection.run_detection", return_value=[(20,20,60,100,"swimming",.9),(70,10,110,40,"float",.8)]):
+            for _ in range(3):
+                drawn, people = track_with_deepsort(None,frame.copy(),ds)
+        self.assertEqual([p["class"] for p in people],["swimming"])
+        self.assertEqual(len(ds.tracker.tracks),1)
+        self.assertTrue(drawn[10:41,70:111].any())
 
 class ApiTest(unittest.TestCase):
     def setUp(self):
@@ -147,6 +158,14 @@ class ApiTest(unittest.TestCase):
         self.assertTrue(response.json()["analysis"]["isDrowning"])
         self.assertEqual(self.manager.items,{})
         self.assertNotIn("alarm",response.json()["detections"][0])
+
+    def test_image_excludes_floating_objects_from_people(self):
+        _, image = cv2.imencode(".jpg",np.zeros((120,120,3),dtype=np.uint8))
+        with patch("app.detection.run_detection",return_value=[(70,10,110,40,"float",.8)]):
+            response = self.client.post("/predict",data={"model_type":"above-water","source":"image"},files={"file":("test.jpg",io.BytesIO(image.tobytes()),"image/jpeg")})
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.json()["detections"],[])
+        self.assertEqual(response.json()["analysis"]["riskLevel"],"Unknown")
 
     def test_validation_and_unknown_session(self):
         self.assertEqual(self.client.get("/sessions/no-such-session/events").status_code,404)

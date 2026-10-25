@@ -12,10 +12,10 @@ from PIL import Image, ImageDraw, ImageOps
 from tqdm import tqdm
 import yaml
 
-# Internal labels understood by the backend; "normal" is the legacy name for swimming.
-CANONICAL = ("swimming", "struggling", "drowning")
-ALIASES = {"normal": "swimming"}
-COLORS = {"swimming": "lime", "struggling": "yellow", "drowning": "red"}
+# Internal labels understood by the backend; "float" is a non-person object that is never tracked or alerted.
+CANONICAL = ("swimming", "struggling", "drowning", "float")
+ALIASES = {"normal": "swimming", "swimmer": "swimming"}
+COLORS = {"swimming": "lime", "struggling": "yellow", "drowning": "red", "float": "deepskyblue"}
 SPLITS = {"train": "train", "val": "val", "valid": "val", "validation": "val", "test": "test"}
 SOURCE = "https://figshare.com/articles/dataset/Underwater_Drowning_Detection_Dataset/29497235?file=56039351"
 
@@ -50,7 +50,7 @@ def class_names(root, names=None, rename=None):
         value = str(rename.get(name, name)).strip().lower()
         value = ALIASES.get(value, value)
         if value not in CANONICAL:
-            raise ValueError(f"Class '{name}' is not swimming/struggling/drowning; map it with --rename '{name}=<label>'")
+            raise ValueError(f"Class '{name}' is not one of {'/'.join(CANONICAL)}; map it with --rename '{name}=<label>'")
         mapped.append(value)
     if len(set(mapped)) != len(mapped) or "drowning" not in mapped:
         raise ValueError(f"Classes {names} must map to distinct labels including drowning, got {mapped}")
@@ -178,7 +178,7 @@ if __name__ == "__main__":
     parser.add_argument("--groups", help="CSV with image (relative to images/) and group (source session) columns")
     parser.add_argument("--names", help="Comma-separated class order when the dataset has no classes.txt/data.yaml")
     parser.add_argument("--rename", action="append", default=[], metavar="OLD=NEW",
-                        help="Map a dataset class name to swimming/struggling/drowning; repeatable")
+                        help="Map a dataset class name to swimming/struggling/drowning/float; repeatable")
     parser.add_argument("--source", default=SOURCE, help="Dataset URL recorded in audit.json")
     parser.add_argument("--drop-exact-duplicates", action="store_true",
                         help="Exclude val/test copies of images identical to another split instead of failing")

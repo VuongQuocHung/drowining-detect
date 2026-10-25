@@ -38,6 +38,10 @@ class Settings:
 
 settings = Settings()
 
+# Non-person classes are drawn on frames but never tracked or alerted.
+OBJECT_CLASSES = ("float",)
+
 def normalize_class(name):
     value = str(name).strip().lower()
-    return {"normal": "swimming", "swimming": "swimming", "struggling": "struggling", "drowning": "drowning"}.get(value, "unknown")
+    return {"normal": "swimming", "swimmer": "swimming", "swimming": "swimming", "struggling": "struggling",
+            "drowning": "drowning", "float": "float"}.get(value, "unknown")

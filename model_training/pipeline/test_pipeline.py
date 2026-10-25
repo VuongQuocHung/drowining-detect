@@ -83,6 +83,12 @@ class DatasetTest(unittest.TestCase):
             # Ultralytics finds labels by swapping /images/ for /labels/ in each listed path.
             self.assertTrue(Path(first.replace("images","labels")).with_suffix(".txt").exists())
 
+    def test_roboflow_water_rescue_names(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)/"dataset"; output=Path(folder)/"prepared"
+            self.roboflow_fixture(root,"['Drowning', 'float', 'swimmer']")
+            self.assertEqual(audit(root,output)["names"],["drowning","float","swimming"])
+
     def test_unknown_class_names_need_explicit_rename(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder)/"dataset"; output=Path(folder)/"prepared"

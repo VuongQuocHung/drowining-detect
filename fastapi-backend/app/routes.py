@@ -24,7 +24,7 @@ from .utils import (
 from .gpu_utils import get_cuda_status
 from .sessions import sessions, BusyError, inference_lock
 from .models_loader import ensure_gan
-from .settings import settings, ROOT
+from .settings import settings, ROOT, OBJECT_CLASSES
 
 
 # Create router
@@ -227,8 +227,9 @@ def predict_image(request, model_type, source, file, enhancement, confidence_thr
             frame, detections = detection_with_enhance(image, request.app.state.models[model_type], gan,
                                                        enhancement, confidence_threshold)
         labels = ["swimming", "struggling", "drowning", "unknown"]
+        people = [b for b in detections if b[4] not in OBJECT_CLASSES]  # objects stay drawn on the image only
         tracked = [{"x1": b[0], "y1": b[1], "x2": b[2], "y2": b[3], "track_id": i+1,
-                    "class": b[4], "class_id": labels.index(b[4]), "confidence": b[5]} for i,b in enumerate(detections)]
+                    "class": b[4], "class_id": labels.index(b[4]), "confidence": b[5]} for i,b in enumerate(people)]
         ok, buffer = cv2.imencode(".jpg", frame)
         if not ok:
             raise HTTPException(500, "Cannot encode result")

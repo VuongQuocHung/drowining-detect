@@ -3,11 +3,12 @@ import time
 import cv2
 import numpy as np
 import torch
-from .settings import ROOT, settings, normalize_class
+from .settings import ROOT, OBJECT_CLASSES, settings, normalize_class
 from utils.data_utils import preprocess, deprocess
 
 realtime_metrics = {"processing_speed_ms": 0., "real_time_speed_fps": 0., "latency_per_frame_ms": 0., "last_updated": 0.}
-CLASS_COLORS = {"swimming": (0, 200, 0), "struggling": (0, 200, 255), "drowning": (0, 0, 255), "unknown": (128, 128, 128)}
+CLASS_COLORS = {"swimming": (0, 200, 0), "struggling": (0, 200, 255), "drowning": (0, 0, 255),
+                "float": (255, 160, 0), "unknown": (128, 128, 128)}
 
 def play_alarm_sound():
     if not settings.backend_alarm:
@@ -51,6 +52,8 @@ def track_with_deepsort(model, frame, deepsort, conf_thresh=settings.confidence,
         timings["yolo_ms"] = (time.perf_counter()-started)*1000
     started = time.perf_counter()
     raw = [b for b in raw if (b[2]-b[0])*(b[3]-b[1]) >= min_area]
+    objects = [b for b in raw if b[4] in OBJECT_CLASSES]
+    raw = [b for b in raw if b[4] not in OBJECT_CLASSES]
     labels = ["swimming", "struggling", "drowning", "unknown"]
     tracked = []
     if not is_video:
@@ -68,6 +71,7 @@ def track_with_deepsort(model, frame, deepsort, conf_thresh=settings.confidence,
                                 class_id=int(track.oid),confidence=track.confidence, **{"class": labels[int(track.oid)]}))
     if timings is not None:
         timings["tracking_ms"] = (time.perf_counter()-started)*1000
+    draw_detections(frame, objects)
     for det in tracked:
         label = det["class"]
         color = CLASS_COLORS[label]

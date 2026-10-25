@@ -59,8 +59,8 @@ def main(args):
     if audit["errors"] or audit["exact_cross_split"]:
         raise ValueError("Audit failed")
     for split in ("train", "val"):
-        if any(audit["split_class_boxes"].get(split, {}).get(name,0) == 0 for name in ("swimming", "struggling", "drowning")):
-            raise ValueError(f"All three classes must be represented in {split}")
+        if any(audit["split_class_boxes"].get(split, {}).get(name,0) == 0 for name in audit["names"]):
+            raise ValueError(f"Every class in {audit['names']} must be represented in {split}")
     manifest = data.parent / "manifest.json"
     manifest_hash = hashlib.sha256(manifest.read_bytes()).hexdigest()
     hardware = {"gpu": torch.cuda.get_device_name(0), "python": platform.python_version(),
@@ -124,7 +124,7 @@ def main(args):
         (output / "comparison.json").write_text(json.dumps(results,indent=2))
     selected = choose(results)
     (output / "selected.json").write_text(json.dumps(selected,indent=2))
-    shutil.copy2(selected["checkpoint"], output / "underwater_selected.pt")
+    shutil.copy2(selected["checkpoint"], output / f"{args.name}_selected.pt")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -132,4 +132,5 @@ if __name__ == "__main__":
     parser.add_argument("--output", required=True)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--test-checkpoint")
+    parser.add_argument("--name", default="underwater", help="Camera view; the chosen weights become <name>_selected.pt")
     main(parser.parse_args())

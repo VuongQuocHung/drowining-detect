@@ -49,11 +49,16 @@ Enhancement video cũng dùng chung worker và giới hạn một nguồn; endpo
 
 ## Kaggle: dữ liệu và huấn luyện
 
-Mở [Kaggle_Underwater.ipynb](../model_training/Kaggle_Underwater.ipynb) trên Kaggle, chọn Accelerator GPU (T4 x2 hoặc P100), bật Internet rồi Run All. Notebook tự sparse-clone thư mục `model_training/pipeline` từ GitHub và tải dataset Figshare (CC BY 4.0, ~1,6 GB) vào `/tmp`, nên không cần gắn input và dataset không bị lưu vào output. Notebook không đăng nhập Ultralytics Hub và không cần token trong code.
+Mở [Kaggle_Train.ipynb](../model_training/Kaggle_Train.ipynb) trên Kaggle, chọn Accelerator GPU (T4 x2 hoặc P100), bật Internet, thêm Secret `ROBOFLOW_API_KEY` (Add-ons → Secrets) rồi Run All. Notebook train lần lượt hai góc nhìn trong `VIEWS`; xóa một phần tử để chỉ train góc còn lại. Notebook tự sparse-clone thư mục `model_training/pipeline` từ GitHub và tải dataset vào `/tmp`, nên không cần gắn input và dataset không bị lưu vào output. Key Roboflow chỉ đọc từ Kaggle Secrets, không nằm trong code hay output.
+
+| Góc nhìn | Dataset | Lớp |
+|---|---|---|
+| `underwater` | [Figshare Underwater Drowning Detection Dataset](https://figshare.com/articles/dataset/Underwater_Drowning_Detection_Dataset/29497235?file=56039351), CC BY 4.0 | swimming / struggling / drowning |
+| `abovewater` | [Roboflow water-rescue-dataset v1](https://universe.roboflow.com/cuizh/water-rescue-dataset/dataset/1), CC BY 4.0, tải bản export YOLOv11 qua API | 2 lớp, chuẩn hóa về swimming / drowning |
 
 Notebook dùng `requirements-kaggle.txt` để giữ Torch/TorchVision/CUDA có sẵn của Kaggle. Không dùng `requirements.txt` cục bộ trong Kaggle Python 3.13: TorchVision 0.20.1 và NumPy 1.26.4 không hỗ trợ Python này. Chạy cell kiểm tra GPU/NMS trước audit; phiên bản thực tế được lưu trong environment.json và installed-packages.txt. Muốn resume cần giữ môi trường tương thích với lần chạy trước. Requirements đầy đủ ở backend vẫn dành cho môi trường local Python 3.10/3.11.
 
-Dataset có 5.613 ảnh, ba lớp swimming/struggling/drowning, chia sẵn train 4.488 / val 1.125, không có test. Đã kiểm tra trước toàn bộ nhãn (25/10/2026): mỗi ảnh một box, 1.871 box mỗi lớp (train 1.496, val 375), không có nhãn lỗi; trùng ảnh giữa tập vẫn do audit xác minh trên Kaggle. Audit kiểm tra ảnh/nhãn YOLO, class ID, tọa độ, box vượt ảnh; tạo preview, class counts, SHA256 pixel và dHash. Ảnh trùng chính xác giữa tập hoặc nhãn lỗi chặn chuẩn bị dữ liệu; ảnh gần trùng được liệt kê để rà soát. dHash là công cụ sàng lọc, không chứng minh hai ảnh độc lập.
+Dataset dưới nước có 5.613 ảnh, ba lớp swimming/struggling/drowning, chia sẵn train 4.488 / val 1.125, không có test. Đã kiểm tra trước toàn bộ nhãn (25/10/2026): mỗi ảnh một box, 1.871 box mỗi lớp (train 1.496, val 375), không có nhãn lỗi; trùng ảnh giữa tập vẫn do audit xác minh trên Kaggle. Audit kiểm tra ảnh/nhãn YOLO, class ID, tọa độ, box vượt ảnh; tạo preview, class counts, SHA256 pixel và dHash. Tên lớp đọc từ `classes.txt` hoặc `data.yaml` và chuẩn hóa (`normal` → `swimming`); tên khác phải ánh xạ rõ bằng `--rename OLD=NEW` (trong notebook: `DATA[view]['rename']`). Audit nhận cả cấu trúc `images/{train,val}` (Figshare) và `{train,valid,test}/images` (Roboflow). Nhãn lỗi chặn chuẩn bị dữ liệu; ảnh trùng chính xác giữa tập cũng chặn, trừ khi bật `--drop-exact-duplicates` (notebook bật mặc định): bản ở val/test bị loại khỏi manifest, giữ bản ở train, danh sách nằm trong `dropped_exact_duplicates` của audit.json, file gốc không bị xóa; ảnh gần trùng được liệt kê để rà soát. dHash là công cụ sàng lọc, không chứng minh hai ảnh độc lập.
 
 Audit hiện hai thanh tiến trình: `[1/2] Images + labels` đếm ảnh và `[2/2] Duplicate scan` đếm các cặp đã duyệt (gồm cả cặp cùng split được bỏ qua), kèm số cặp trùng/gần trùng. Thanh hiển thị thời gian, tốc độ và ETA qua stderr để dùng được khi gọi bằng subprocess trong Kaggle. CLI chỉ in tóm tắt cuối; danh sách chi tiết nằm trong audit.json để tránh làm đầy output notebook.
 
@@ -61,16 +66,19 @@ Audit hiện hai thanh tiến trình: `[1/2] Images + labels` đếm ảnh và `
 python audit.py /path/to/datasets --output /kaggle/working/prepared
 # Khi có metadata nguồn thật:
 python audit.py /path/to/datasets --output /kaggle/working/prepared --groups groups.csv
-python train.py --data /kaggle/working/prepared/data.yaml --output /kaggle/working/experiments --resume
+python train.py --data /kaggle/working/prepared/data.yaml --output /kaggle/working/experiments --name underwater --resume
+# Roboflow export 2 lớp:
+python audit.py /path/to/abovewater --output /kaggle/working/prepared/abovewater --drop-exact-duplicates
+python train.py --data /kaggle/working/prepared/abovewater/data.yaml --output /kaggle/working/experiments/abovewater --name abovewater --resume
 ```
 
 CSV có cột `image,group`, ví dụ `train/frame_00001.jpg,recording_A`. Không suy ra recording chỉ từ số frame. Có nhóm nguồn thì chia gần 70/15/15 theo nhóm, seed 42; số ảnh có thể lệch tỷ lệ để không cắt nhóm. Không có nhóm thì giữ split gốc, không tạo test giả từ các frame có nguy cơ cùng cảnh. Nếu audit phát hiện duplicate, sửa dataset trong bản sao rồi chạy lại; giữ một bản ảnh trùng ở cùng một split, không xóa âm thầm dữ liệu gốc.
 
 Train YOLO11n và YOLO11s, imgsz640, tối đa100 epoch, patience15, seed42, batch16→8→4 khi CUDA OOM. Resume từ last.pt; nếu OOM lúc resume thì bắt đầu lại thí nghiệm đó với batch thấp hơn. Lưu checkpoint mỗi5 epoch và bản last/best. Chỉ resume khi manifest dữ liệu không đổi. Khi chuyển Kaggle session, attach output version trước và copy experiments vào working; lưu các thư viện và phần cứng trong environment.json.
 
-Chọn bằng validation: giữ ứng viên có recall drowning cách tốt nhất ≤1 điểm phần trăm; tiếp tục giữ precision cách tốt nhất trong nhóm ≤1 điểm; chọn latency p50 thấp nhất. Đây là quy tắc cố định, không dùng kết quả test để đổi lựa chọn. Có test độc lập thì chạy một lần với `--test-checkpoint` trỏ checkpoint đã chọn. Không có test thì ghi rõ chỉ có validation.
+Chọn bằng validation: giữ ứng viên có recall drowning cách tốt nhất ≤1 điểm phần trăm; tiếp tục giữ precision cách tốt nhất trong nhóm ≤1 điểm; chọn latency p50 thấp nhất. Đây là quy tắc cố định, không dùng kết quả test để đổi lựa chọn. Có test độc lập thì chạy một lần với `--test-checkpoint` trỏ checkpoint đã chọn; notebook tự làm việc này cho góc nhìn có test (Roboflow). Không có test (Figshare) thì ghi rõ chỉ có validation. Test của Roboflow chia ngẫu nhiên theo ảnh, có thể chứa frame cùng cảnh với train, nên vẫn cần đánh giá trên video độc lập.
 
-Tải `underwater_results.zip` ở mục Output (gồm `underwater_selected.pt`, selected/comparison/environment JSON, manifest, audit, plots; bỏ các checkpoint epoch trung gian). Chép `underwater_selected.pt` vào `fastapi-backend/model/detection_model/`: backend tự dùng file này cho camera dưới nước, khi đó lớp struggling và cảnh báo vàng `struggling_alert` mới hoạt động. Xóa file để rollback về `underwaterModel.pt` (2 lớp). `UNDERWATER_MODEL` vẫn ghi đè được đường dẫn. Mô hình trên mặt nước vẫn 2 lớp vì chưa có dữ liệu struggling cho góc nhìn này.
+Tải `results.zip` ở mục Output: mỗi góc nhìn có `<view>_selected.pt`, selected/comparison/test/environment JSON, manifest, audit, plots (bỏ checkpoint epoch và last.pt). Chép `underwater_selected.pt` và `abovewater_selected.pt` vào `fastapi-backend/model/detection_model/`: backend tự dùng các file này, tự quay về `underwaterModel.pt`/`abovewaterModel.pt` khi file bị xóa. `UNDERWATER_MODEL`/`ABOVE_MODEL` vẫn ghi đè được đường dẫn. Lớp struggling và cảnh báo vàng `struggling_alert` chỉ có ở camera dưới nước; camera trên mặt nước chỉ phân biệt swimming/drowning vì dataset chỉ có 2 lớp.
 
 ## Đánh giá và nghiệm thu
 

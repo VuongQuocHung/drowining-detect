@@ -17,6 +17,16 @@ class DatasetTest(unittest.TestCase):
             (root / "labels" / split).mkdir(parents=True,exist_ok=True)
             Image.new("RGB",(64,64),(index*70,30,20)).save(root/"images"/split/f"{index}.jpg")
             (root/"labels"/split/f"{index}.txt").write_text(f"{index} .5 .5 .4 .4\n")
+        (root/"labels/train/classes.txt").write_text("Swimming\nStruggling\nDrowning\n")
+
+    def roboflow_fixture(self, root, names):
+        # Roboflow YOLO export: {train,valid,test}/{images,labels} plus data.yaml.
+        for index,split in enumerate(("train","train","valid","valid","test")):
+            (root/split/"images").mkdir(parents=True,exist_ok=True)
+            (root/split/"labels").mkdir(parents=True,exist_ok=True)
+            Image.new("RGB",(64,64),(index*50,30,20)).save(root/split/"images"/f"{index}.jpg")
+            (root/split/"labels"/f"{index}.txt").write_text(f"{index%2} .5 .5 .4 .4\n")
+        (root/"data.yaml").write_text(f"nc: 2\nnames: {names}\n")
 
     def test_original_split_and_counts(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -42,6 +52,12 @@ class DatasetTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 audit(root,output)
             self.assertTrue(json.loads((output/"audit.json").read_text())["exact_cross_split"])
+            Image.new("RGB",(64,64),(200,200,200)).save(root/"images/val/3.jpg")
+            (root/"labels/val/3.txt").write_text("2 .5 .5 .4 .4\n")
+            report=audit(root,output,drop_exact_duplicates=True)
+            self.assertEqual(report["dropped_exact_duplicates"],["val/2.jpg"])
+            self.assertEqual(report["split_counts"],{"train":2,"val":1})
+            self.assertTrue((root/"images/val/2.jpg").exists())
 
     def test_grouped_split_never_crosses_source(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -51,6 +67,29 @@ class DatasetTest(unittest.TestCase):
             groups.write_text("image,group\ntrain/0.jpg,A\ntrain/1.jpg,B\nval/2.jpg,C\n")
             report=audit(root,output,groups)
             self.assertEqual(report["split_counts"],{"train":1,"val":1,"test":1})
+
+    def test_roboflow_two_class_layout(self):
+        import yaml
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)/"dataset"; output=Path(folder)/"prepared"
+            self.roboflow_fixture(root,"['Drowning', 'Normal']")
+            report=audit(root,output)
+            self.assertEqual(report["names"],["drowning","swimming"])
+            self.assertEqual(report["split_counts"],{"train":2,"val":2,"test":1})
+            self.assertEqual(report["split_class_boxes"]["val"],{"drowning":1,"swimming":1})
+            data=yaml.safe_load((output/"data.yaml").read_text())
+            self.assertEqual(data["names"],{0:"drowning",1:"swimming"})
+            first=(output/"train.txt").read_text().splitlines()[0]
+            # Ultralytics finds labels by swapping /images/ for /labels/ in each listed path.
+            self.assertTrue(Path(first.replace("images","labels")).with_suffix(".txt").exists())
+
+    def test_unknown_class_names_need_explicit_rename(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)/"dataset"; output=Path(folder)/"prepared"
+            self.roboflow_fixture(root,"['drowning', 'person']")
+            with self.assertRaisesRegex(ValueError,"--rename 'person=<label>'"):
+                audit(root,output)
+            self.assertEqual(audit(root,output,rename={"person":"swimming"})["names"],["drowning","swimming"])
 
     def test_selection_prefers_latency_only_within_one_point(self):
         def result(name, recall, precision, latency):

@@ -6,10 +6,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MODELS = ROOT / "model/detection_model"
-# A 3-class checkpoint from the Kaggle notebook takes over when present; delete it to roll back.
-DEFAULT_UNDERWATER = MODELS / "underwater_selected.pt"
-if not DEFAULT_UNDERWATER.exists():
-    DEFAULT_UNDERWATER = MODELS / "underwaterModel.pt"
+
+def _default_model(view, original):
+    # Weights trained by the Kaggle notebook take over when present; delete them to roll back.
+    trained = MODELS / f"{view}_selected.pt"
+    return str(trained if trained.exists() else MODELS / original)
 
 @dataclass(frozen=True)
 class Settings:
@@ -22,8 +23,8 @@ class Settings:
     backend_alarm: bool = os.getenv("BACKEND_ALARM", "0") == "1"
     min_area: float = float(os.getenv("MIN_BOX_AREA", "0"))
     session_ttl: float = float(os.getenv("SESSION_TTL", "3600"))
-    underwater_model: str = os.getenv("UNDERWATER_MODEL", str(DEFAULT_UNDERWATER))
-    above_model: str = os.getenv("ABOVE_MODEL", str(MODELS / "abovewaterModel.pt"))
+    underwater_model: str = os.getenv("UNDERWATER_MODEL", _default_model("underwater", "underwaterModel.pt"))
+    above_model: str = os.getenv("ABOVE_MODEL", _default_model("abovewater", "abovewaterModel.pt"))
 
     def __post_init__(self):
         if not 0 <= self.confidence <= 1:

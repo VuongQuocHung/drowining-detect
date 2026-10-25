@@ -1,0 +1,8 @@
+-r ../model_training/pipeline/requirements.txt
+fastapi==0.116.1
+uvicorn==0.35.0
+python-multipart==0.0.20
+easydict==1.13
+scipy==1.14.1
+pygame==2.6.1
+httpx==0.28.1

@@ -9,8 +9,9 @@ import os
 import numpy as np
 import torch
 from ultralytics import YOLO
-import tensorflow as tf
-from tensorflow.keras.models import model_from_json
+from .settings import ROOT, settings
+from threading import Lock
+_gan_lock = Lock()
 
 from .gpu_utils import get_device, setup_pytorch_cuda
 from deep_sort_pytorch.utils.parser import get_config
@@ -24,7 +25,11 @@ def load_gan_model():
         tensorflow.keras.Model or None: Loaded GAN model or None if loading fails
     """
     try:
-        checkpoint_dir = 'model/FUnIE_GAN_model/'
+        from .gpu_utils import setup_gpu, optimize_tensorflow_for_inference
+        setup_gpu()
+        optimize_tensorflow_for_inference()
+        from tensorflow.keras.models import model_from_json
+        checkpoint_dir = str(ROOT / "model/FUnIE_GAN_model") + "/"
         model_name_by_epoch = "model_15320_"
         model_h5 = checkpoint_dir + model_name_by_epoch + ".h5"
         model_json = checkpoint_dir + model_name_by_epoch + ".json"
@@ -61,8 +66,8 @@ def load_yolo_models():
     
     # Load YOLO Detection Models
     models = {
-        "underwater": YOLO("model/detection_model/underwaterModel.pt").to(device),
-        "above-water": YOLO("model/detection_model/abovewaterModel.pt").to(device),
+        "underwater": YOLO(settings.underwater_model).to(device),
+        "above-water": YOLO(settings.above_model).to(device),
     }
     
     print(f"✅ YOLO models loaded on {device}")
@@ -79,14 +84,17 @@ def load_deepsort_model():
     Returns:
         DeepSort: Initialized DeepSORT tracker
     """
-    deepsort_cfg_path = "deep_sort_pytorch/configs/deep_sort.yaml"
+    deepsort_cfg_path = str(ROOT / "deep_sort_pytorch/configs/deep_sort.yaml")
     _cfg = get_config()
     _cfg.merge_from_file(deepsort_cfg_path)
+    checkpoint = ROOT / _cfg.DEEPSORT.REID_CKPT
+    if not checkpoint.is_file():
+        raise FileNotFoundError("DeepSORT checkpoint missing. Run python tools/fetch_tracker.py from fastapi-backend.")
     
     deepsort = DeepSort(
-        _cfg.DEEPSORT.REID_CKPT,
+        str(ROOT / _cfg.DEEPSORT.REID_CKPT),
         max_dist=_cfg.DEEPSORT.MAX_DIST,
-        min_confidence=_cfg.DEEPSORT.MIN_CONFIDENCE,
+        min_confidence=0.0,
         nms_max_overlap=_cfg.DEEPSORT.NMS_MAX_OVERLAP,
         max_iou_distance=_cfg.DEEPSORT.MAX_IOU_DISTANCE,
         max_age=_cfg.DEEPSORT.MAX_AGE,
@@ -109,8 +117,8 @@ def initialize_models():
     
     # Load models
     yolo_models = load_yolo_models()
-    deepsort_model = load_deepsort_model()
-    gan_model = load_gan_model()
+    deepsort_model = None
+    gan_model = None
     
     return yolo_models, deepsort_model, gan_model
 
@@ -131,3 +139,10 @@ def warm_up_models(models):
                 print(f"✅ {model_name} model warmed up on GPU")
             except Exception as e:
                 print(f"⚠️ Warning: Could not warm up {model_name} model: {e}")
+
+
+def ensure_gan(app):
+    with _gan_lock:
+        if app.state.gan_model is None:
+            app.state.gan_model = load_gan_model()
+        return app.state.gan_model

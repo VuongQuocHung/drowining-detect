@@ -1,0 +1,7 @@
+# Keep Kaggle's preinstalled Torch/TorchVision/CUDA and scientific stack.
+# The full environment is recorded in installed-packages.txt for each run.
+ultralytics==8.3.170
+seaborn==0.13.2
+PyYAML>=6.0.2,<7
+psutil>=7,<8
+tqdm==4.67.1

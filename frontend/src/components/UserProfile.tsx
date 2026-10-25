@@ -1,10 +1,11 @@
 // User profile dropdown component displaying user information, status, and quick actions
-import React, { useState } from 'react';
-import { User, Clock, Shield, Award, LogOut, Settings, Bell } from 'lucide-react';
+import { useState } from 'react';
+import { Clock, Award, LogOut, Settings } from 'lucide-react';
+import type { User } from '../services/api';
 
 // Props interface for the UserProfile component
 interface UserProfileProps {
-  user: any;
+  user: User;
   onLogout: () => void;
 }
 

@@ -1,744 +1,153 @@
-// React component for AI-powered drowning detection system
-// Supports both file upload and live camera feed analysis
-import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Play, Brain, FileVideo, Image as ImageIcon, AlertTriangle, CheckCircle, Clock, Target, Camera, Monitor, Square } from 'lucide-react';
-import { api, WebcamStatus, PredictionResult } from '../services/api';
+import { useEffect, useRef, useState } from 'react';
+import { API_URL, PersonDetection, SessionEvent, SessionInfo, sessionRequest, stopSession } from '../services/sessions';
+
+const terminal = (status: string) => ['completed', 'stopped', 'failed'].includes(status);
+const levelNames: Record<string, string> = {
+  normal: 'Bình thường', suspected: 'Đang xác nhận', struggling_alert: 'Cảnh báo vùng vẫy',
+  drowning_alert: 'Cảnh báo đuối nước', lost: 'Mất dấu — chưa rõ trạng thái',
+};
 
 export default function DrowningDetection() {
-  // State management for model selection and file handling
-  const [selectedModel, setSelectedModel] = useState('underwater');
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [predictionResult, setPredictionResult] = useState<PredictionResult | null>(null);
-  
-  // URL states for different media sources
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [streamingUrl, setStreamingUrl] = useState<string | null>(null);
-  const [realtimeStreamUrl, setRealtimeStreamUrl] = useState<string | null>(null);
-  
-  // Session and processing states
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [downloadAvailable, setDownloadAvailable] = useState<boolean>(false);
-  const [inputMode, setInputMode] = useState<'upload' | 'camera'>('upload');
-  const [enhancementEnabled, setEnhancementEnabled] = useState<boolean>(true);
-  
-  // Refs for DOM elements
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  
-  // Processing and camera states
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isStreamActive, setIsStreamActive] = useState(false);
-  const [webcamStatus, setWebcamStatus] = useState<WebcamStatus | null>(null);
-  const statusIntervalRef = useRef<number | null>(null);
+  const [model, setModel] = useState('underwater');
+  const [mode, setMode] = useState<'video' | 'webcam' | 'image'>('video');
+  const [file, setFile] = useState<File | null>(null);
+  const [enhance, setEnhance] = useState(false);
+  const [confidence, setConfidence] = useState(0.5);
+  const [session, setSession] = useState<SessionInfo | null>(null);
+  const [event, setEvent] = useState<SessionEvent | null>(null);
+  const [image, setImage] = useState<string | null>(null);
+  const [imagePeople, setImagePeople] = useState<PersonDetection[]>([]);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const [sound, setSound] = useState(false);
+  const soundRef = useRef(false);
+  const audioRef = useRef<AudioContext | null>(null);
+  const alarmSequence = useRef(0);
+  const active = session !== null && !terminal(session.status);
+  const sessionId = session?.session_id;
 
-  // Available AI models for drowning detection
-  const models = [
-    {
-      id: 'underwater',
-      name: 'Underwater Drowning Detection',
-      description: 'YOLOv11s model for detecting drowning incidents in underwater camera feeds',
-      accuracy: '0.934 mAP@50',
-      processingTime: '6.869ms',
-      trainingData: '10833 samples',
-      features: ['Object Detection','Object Tracking']
-    },
-    {
-      id: 'above-water',
-      name: 'Above Water Drowning Detection + DeepSORT',
-      description: 'YOLOv11s model optimized for surface-level drowning detection and distress signals',
-      accuracy: '0.868 mAP@50',
-      processingTime: '9.199ms',
-      trainingData: '8826 samples',
-      features: ['Object Detection', 'Object Counting', 'Multi-person Tracking with DeepSort','Unique Swimmer IDs']
-    }
-  ];
-
-  // Check webcam status on component mount
   useEffect(() => {
-    checkWebcamStatus();
+    let cancelled = false;
+    void sessionRequest<SessionInfo | null>('/sessions/active').then(info => {
+      if (!cancelled && info) {
+        setSession(info); setModel(info.model_type); setMode(info.source);
+        setEnhance(info.enhancement); setConfidence(info.confidence_threshold);
+      }
+    }).catch(err => { if (!cancelled) setError(String(err)); });
+    return () => { cancelled = true; };
   }, []);
 
-  // Check current webcam status from backend
-  const checkWebcamStatus = async () => {
-    try {
-      const status = await api.getWebcamStatus();
-      setWebcamStatus(status);
-      setIsStreamActive(status.active);
-    } catch (error) {
-      console.error('Error checking webcam status:', error);
-    }
-  };
-
-  // Start status polling when webcam is active
-  const startStatusPolling = () => {
-    if (statusIntervalRef.current) {
-      clearInterval(statusIntervalRef.current);
-    }
-    statusIntervalRef.current = setInterval(checkWebcamStatus, 3000);
-    console.log('Status polling started');
-  };
-
-  // Stop status polling
-  const stopStatusPolling = () => {
-    if (statusIntervalRef.current) {
-      clearInterval(statusIntervalRef.current);
-      statusIntervalRef.current = null;
-      console.log('Status polling stopped');
-    }
-  };
-
-  // Start camera stream with selected model and enhancement options
-  const startCamera = async () => {
-    try {
-      setIsProcessing(true);
-      const result = await api.startWebcam(selectedModel, selectedModel === 'underwater' ? enhancementEnabled : false);
-      
-      if (result.success) {
-        setIsStreamActive(true);
-        setWebcamStatus({ active: true, model: selectedModel });
-        startStatusPolling(); // Start polling for status updates
-      } else {
-        alert('Failed to start camera: ' + result.message);
-      }
-    } catch (error) {
-      console.error('Error starting camera:', error);
-      alert('Error starting camera. Please check if the backend is running.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const stopCamera = async () => {
-    try {
-      setIsProcessing(true);
-      const result = await api.stopWebcam();
-      
-      if (result.success) {
-        setIsStreamActive(false);
-        setWebcamStatus({ active: false, model: null });
-        setPreviewUrl(null);
-        setPredictionResult(null); // Clear any previous results
-        stopStatusPolling(); // Stop polling for status updates
-        console.log('Camera stopped successfully');
-      } else {
-        alert('Failed to stop camera: ' + result.message);
-      }
-    } catch (error) {
-      console.error('Error stopping camera:', error);
-      alert('Error stopping camera. Please try again.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // Cleanup on component unmount
   useEffect(() => {
-    return () => {
-      stopStatusPolling();
-      if (isStreamActive) {
-        api.stopWebcam().catch(console.error);
+    if (!sessionId) return;
+    const source = new EventSource(`${API_URL}/sessions/${sessionId}/events`);
+    source.onopen = () => setConnected(true);
+    source.onerror = () => setConnected(false);
+    source.onmessage = message => {
+      const next = JSON.parse(message.data) as SessionEvent;
+      setEvent(previous => ({ ...previous, ...next, metrics: next.metrics || previous?.metrics }));
+      setSession(previous => previous ? { ...previous, status: next.status,
+        download_available: next.status === 'completed' && previous.source === 'video',
+        processing_complete: next.status === 'completed', error: next.error } : previous);
+      if (next.error) setError(next.error);
+      if (next.sequence > alarmSequence.current && soundRef.current && next.detections.some(p => p.alarm)) {
+        const context = audioRef.current;
+        if (context?.state === 'running') {
+          const oscillator = context.createOscillator(); const gain = context.createGain();
+          oscillator.frequency.value = 880; gain.gain.value = 0.15;
+          oscillator.connect(gain); gain.connect(context.destination);
+          oscillator.start(); oscillator.stop(context.currentTime + 0.6);
+        }
       }
+      alarmSequence.current = Math.max(alarmSequence.current, next.sequence);
+      if (next.terminal) { source.close(); setConnected(false); }
     };
-  }, [isStreamActive]);
+    return () => { source.close(); setConnected(false); };
+  }, [sessionId]);
 
-  // Handle file upload and create preview URL
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      setUploadedFile(file);
-      setPreviewUrl(URL.createObjectURL(file));
-      setStreamingUrl(null);
-      setPredictionResult(null);
-    }
-  };
-  
-  // Recursively check video processing status until completion
-  const checkProcessingStatus = async (sessionId: string) => {
+  useEffect(() => () => { void audioRef.current?.close(); }, []);
+  const enableSound = async () => {
     try {
-      const status = await api.getVideoSessionStatus(sessionId);
-      if (status.processing_complete && status.download_available) {
-        setDownloadAvailable(true);
+      if (!audioRef.current) audioRef.current = new AudioContext();
+      await audioRef.current.resume(); soundRef.current = !soundRef.current; setSound(soundRef.current);
+    } catch (err) { setError(String(err)); }
+  };
+  const start = async () => {
+    setBusy(true); setError(''); setImage(null); setEvent(null); setImagePeople([]); alarmSequence.current = 0;
+    try {
+      const form = new FormData(); form.set('model_type', model);
+      form.set('enhancement', String(enhance && model === 'underwater')); form.set('confidence_threshold', String(confidence));
+      if (mode !== 'webcam') {
+        if (!file) throw new Error('Chọn tệp trước khi chạy.');
+        form.set('file', file);
+      }
+      if (mode === 'image') {
+        form.set('source', 'image');
+        const result = await sessionRequest<{ image_base64: string; detections: PersonDetection[] }>('/predict', form);
+        setImage(`data:image/jpeg;base64,${result.image_base64}`); setImagePeople(result.detections); setSession(null);
       } else {
-        // Check again after 2 seconds if not complete
-        setTimeout(() => checkProcessingStatus(sessionId), 2000);
+        const result = await sessionRequest<{ session_id: string }>(mode === 'webcam' ? '/webcam/start' : '/realtime_video_process', form);
+        setSession(await sessionRequest<SessionInfo>(`/video_session_status/${result.session_id}`));
       }
-    } catch (error) {
-      console.error('Error checking processing status:', error);
-    }
+    } catch (err) { setError(String(err)); }
+    finally { setBusy(false); }
   };
-
-  // Download processed video with detection annotations
-  const handleDownloadVideo = async () => {
-    if (!currentSessionId) return;
-    
-    try {
-      await api.downloadProcessedVideo(currentSessionId);
-    } catch (error) {
-      console.error('Error downloading video:', error);
-      alert('Failed to download video. Please try again.');
-    }
+  const stop = async () => {
+    if (!session) return;
+    setBusy(true);
+    try { setSession(await stopSession(session.session_id)); }
+    catch (err) { setError(String(err)); }
+    finally { setBusy(false); }
   };
-
-  // Clear all results and stop active processes
-  const handleClearResults = async () => {
-    try {
-      // Stop webcam if active
-      if (isStreamActive) {
-        await stopCamera();
-      }
-      
-      // Stop video processing session if active
-      if (currentSessionId) {
-        try {
-          await api.stopVideoProcessing(currentSessionId);
-          console.log('Video processing session stopped');
-        } catch (error) {
-          console.error('Error stopping video processing:', error);
-          // Continue with cleanup even if stopping fails
-        }
-      }
-      
-      // Clear all state
-      setPredictionResult(null);
-      setPreviewUrl(null);
-      setStreamingUrl(null);
-      setRealtimeStreamUrl(null);
-      setCurrentSessionId(null);
-      setDownloadAvailable(false);
-      setUploadedFile(null);
-      setIsProcessing(false);
-      
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-      
-      console.log('All processes terminated and results cleared');
-    } catch (error) {
-      console.error('Error during cleanup:', error);
-      // Still clear the UI state even if some cleanup fails
-      setPredictionResult(null);
-      setPreviewUrl(null);
-      setStreamingUrl(null);
-      setRealtimeStreamUrl(null);
-      setCurrentSessionId(null);
-      setDownloadAvailable(false);
-      setUploadedFile(null);
-      setIsProcessing(false);
-      
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
-
-  // Main prediction handler for both upload and camera modes
-  const handlePredict = async () => {
-    if (inputMode === 'upload' && uploadedFile) {
-      setIsProcessing(true);
-      
-      try {
-        const source = uploadedFile.type.startsWith('video/') ? 'video' as const : 'image' as const;
-        
-        if (source === 'video') {
-          // Use real-time video processing for videos
-          const result = await api.processVideoRealtime(selectedModel, uploadedFile, selectedModel === 'underwater' ? enhancementEnabled : false);
-          setRealtimeStreamUrl(result.streamUrl);
-          setCurrentSessionId(result.sessionId);
-          setDownloadAvailable(false);
-          setStreamingUrl(null);
-          setPreviewUrl(null);
-          setPredictionResult({
-            type: 'video',
-            message: 'Real-time video processing active',
-            model: selectedModel
-          });
-          
-          // Start checking for processing completion
-          checkProcessingStatus(result.sessionId);
-        } else {
-          // Use regular prediction for images
-          const data = await api.predict(selectedModel, source, uploadedFile, selectedModel === 'underwater' ? enhancementEnabled : false);
-          setPredictionResult(data);
-          setPreviewUrl(`data:image/jpeg;base64,${data.image_base64}`);
-          setStreamingUrl(null);
-          setRealtimeStreamUrl(null);
-          setCurrentSessionId(null);
-          setDownloadAvailable(false);
-        }
-      } catch (err) {
-        console.error(err);
-        alert('Error during prediction.');
-      }
-      setIsProcessing(false);
-    } else if (inputMode === 'camera' && isStreamActive) {
-      // For camera mode, we're already streaming with detection
-      // The analysis is happening in real-time
-      setPredictionResult({
-        type: 'camera',
-        isStreamActive: true,
-        model: selectedModel,
-        message: 'Real-time detection is active'
-      });
-    }
-  };
-  
-  // Determine risk level based on confidence score and drowning detection
-  const getRiskLevel = (confidence: number, isDrowning: boolean) => {
-    if (!isDrowning) return { level: 'Safe', color: 'text-green-600 bg-green-100', icon: CheckCircle };
-    if (confidence > 0.9) return { level: 'Critical', color: 'text-red-600 bg-red-100', icon: AlertTriangle };
-    if (confidence > 0.8) return { level: 'High Risk', color: 'text-orange-600 bg-orange-100', icon: AlertTriangle };
-    return { level: 'Moderate Risk', color: 'text-yellow-600 bg-yellow-100', icon: AlertTriangle };
-  };
-
-  const selectedModelData = models.find(m => m.id === selectedModel);
-
-  // Main component render with responsive layout
-  return (
-    <div className="p-6 space-y-6">
-      {/* Header Section - App title and description */}
-      <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-6 rounded-lg">
-        <h2 className="text-2xl font-bold mb-2 flex items-center">
-          <Brain className="w-8 h-8 mr-3" />
-          AI Drowning Detection Testing
-        </h2>
-        <p className="text-purple-100">Test and validate drowning detection models with your own video and image data</p>
+  const people = image ? imagePeople : event?.detections || [];
+  const metrics = event?.metrics;
+  const inputStyle = 'border rounded px-3 py-2 bg-white disabled:opacity-50';
+  return <div className="max-w-7xl mx-auto p-6 space-y-5">
+    <div><h2 className="text-2xl font-bold text-slate-900">Giám sát và nhận diện AI</h2>
+      <p className="text-slate-600">Một nguồn mỗi lần · Theo dõi từng người · Cảnh báo từ kết quả mô hình</p></div>
+    <div className="bg-white rounded-xl p-5 shadow space-y-4">
+      <div className="flex flex-wrap gap-3">
+        <select aria-label="Nguồn" className={inputStyle} value={mode} disabled={active || busy} onChange={e => { setMode(e.target.value as typeof mode); setFile(null); }}>
+          <option value="video">Video</option><option value="webcam">Webcam trên máy backend</option><option value="image">Ảnh tĩnh</option>
+        </select>
+        <select aria-label="Mô hình" className={inputStyle} value={model} disabled={active || busy} onChange={e => setModel(e.target.value)}>
+          <option value="underwater">Dưới nước</option><option value="above-water">Trên mặt nước</option>
+        </select>
+        <label className="flex items-center gap-2">Confidence<input aria-label="Confidence" type="number" min="0" max="1" step="0.05" className={`${inputStyle} w-24`} value={confidence} disabled={active || busy} onChange={e => setConfidence(Number(e.target.value))} /></label>
+        {model === 'underwater' && <label className="flex items-center gap-2"><input type="checkbox" checked={enhance} disabled={active || busy} onChange={e => setEnhance(e.target.checked)} />Tăng cường ảnh GAN</label>}
       </div>
-
-      {/* Main Content Grid - Left panel for controls, right panel for preview */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Panel - Model selection, enhancement options, and file upload */}
-        <div className="space-y-6">
-          {/* Model Selection Section - Choose between underwater and above-water models */}
-          <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold mb-4 flex items-center">
-              <Target className="w-5 h-5 mr-2" />
-              Select Detection Model
-            </h3>
-            
-            <div className="space-y-4">
-              {models.map((model) => (
-                <label key={model.id} className="block cursor-pointer">
-                  <div className={`p-4 border-2 rounded-lg transition-all ${
-                    selectedModel === model.id 
-                      ? 'border-purple-500 bg-purple-50' 
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}>
-                    <div className="flex items-start space-x-3">
-                      <input
-                        type="radio"
-                        name="model"
-                        value={model.id}
-                        checked={selectedModel === model.id}
-                        onChange={(e) => setSelectedModel(e.target.value)}
-                        className="mt-1"
-                      />
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-gray-900">{model.name}</h4>
-                        <p className="text-sm text-gray-600 mt-1">{model.description}</p>
-                        <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
-                          <span>Accuracy: {model.accuracy}</span>
-                          <span>Speed: {model.processingTime}</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {model.features.map((feature, index) => (
-                            <span key={index} className="px-2 py-1 bg-gray-100 text-xs rounded">
-                              {feature}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Enhancement Options - FUnIE-GAN toggle for underwater model */}
-          {selectedModel === 'underwater' && (
-            <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center">
-                <Brain className="w-5 h-5 mr-2" />
-                Enhancement Options
-              </h3>
-              
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex-1">
-                    <h4 className="font-semibold text-gray-900">FUnIE-GAN Enhancement</h4>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Apply underwater image enhancement using Generative Adversarial Networks for improved detection accuracy
-                    </p>
-                    <div className="flex items-center space-x-2 mt-2 text-xs text-gray-500">
-                      <span>• Improves underwater visibility</span>
-                      <span>• Reduces noise and distortion</span>
-                      <span>• Enhances color correction</span>
-                    </div>
-                  </div>
-                  <div className="ml-4">
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={enhancementEnabled}
-                        onChange={(e) => setEnhancementEnabled(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
-                    </label>
-                  </div>
-                </div>
-                
-                {enhancementEnabled && (
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                    <div className="flex items-center space-x-2">
-                      <CheckCircle className="w-4 h-4 text-purple-600" />
-                      <span className="text-sm font-medium text-purple-800">Enhancement Active</span>
-                    </div>
-                    <p className="text-xs text-purple-600 mt-1">
-                      Frames will be enhanced before detection for improved underwater visibility
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Input Section - File upload or camera feed selection */}
-          <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold mb-4 flex items-center">
-              {inputMode === 'upload' ? <Upload className="w-5 h-5 mr-2" /> : <Camera className="w-5 h-5 mr-2" />}
-              {inputMode === 'upload' ? 'Upload Media' : 'Live Camera Feed'}
-            </h3>
-            
-            {/* Input Mode Toggle - Switch between upload and camera modes */}
-            <div className="flex space-x-4 mb-6">
-              <button
-                onClick={() => {
-                  setInputMode('upload');
-                  setUploadedFile(null);
-                  setPreviewUrl(null);
-                  setStreamingUrl(null);
-                  setPredictionResult(null);
-                }}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                  inputMode === 'upload'
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                <Upload className="w-4 h-4" />
-                <span>Upload Media</span>
-              </button>
-              <button
-                onClick={() => {
-                  setInputMode('camera');
-                  setUploadedFile(null);
-                  setPreviewUrl(null);
-                  setStreamingUrl(null);
-                  setPredictionResult(null);
-                }}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                  inputMode === 'camera'
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                <Camera className="w-4 h-4" />
-                <span>Live Camera</span>
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {inputMode === 'upload' ? (
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-purple-500 hover:bg-purple-50 transition-colors"
-                >
-                  <div className="flex flex-col items-center space-y-3">
-                    <div className="flex space-x-2">
-                      <FileVideo className="w-8 h-8 text-gray-400" />
-                      <ImageIcon className="w-8 h-8 text-gray-400" />
-                    </div>
-                    <div>
-                      <p className="text-lg font-medium text-gray-900">Upload Video or Image</p>
-                      <p className="text-sm text-gray-500">Drag and drop or click to browse</p>
-                      <p className="text-xs text-gray-400 mt-1">Supports MP4, AVI, MOV, JPG, PNG</p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="bg-gray-100 rounded-lg p-4 text-center space-y-3">
-                    <Camera className="w-12 h-12 text-gray-400 mx-auto" />
-                    <p className="text-sm text-gray-600">
-                      {isStreamActive ? 'Camera is active and ready for analysis' : 'Click to access your camera'}
-                    </p>
-                    {webcamStatus && (
-                      <div className="text-xs text-gray-500">
-                        Status: {webcamStatus.active ? 'Active' : 'Inactive'}
-                        {webcamStatus.model && ` | Model: ${webcamStatus.model}`}
-                        <button
-                          onClick={checkWebcamStatus}
-                          className="ml-2 text-blue-500 hover:text-blue-700 underline"
-                        >
-                          Refresh
-                        </button>
-                      </div>
-                    )}
-                    {!isStreamActive ? (
-                      <button
-                        onClick={startCamera}
-                        disabled={isProcessing}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors"
-                      >
-                        {isProcessing ? 'Starting...' : 'Start Camera'}
-                      </button>
-                    ) : (
-                      <button
-                        onClick={stopCamera}
-                        disabled={isProcessing}
-                        className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors"
-                      >
-                        {isProcessing ? 'Stopping...' : 'Stop Camera'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-              
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="video/*,image/*"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-
-              {uploadedFile && (
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    {uploadedFile.type.startsWith('video/') ? (
-                      <FileVideo className="w-5 h-5 text-blue-600" />
-                    ) : (
-                      <ImageIcon className="w-5 h-5 text-green-600" />
-                    )}
-                    <div>
-                      <p className="font-medium text-sm">{uploadedFile.name}</p>
-                      <p className="text-xs text-gray-500">
-                        {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <button
-                onClick={handlePredict}
-                disabled={(inputMode === 'upload' && !uploadedFile) || (inputMode === 'camera' && !isStreamActive) || isProcessing}
-                className="w-full flex items-center justify-center space-x-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white py-3 px-4 rounded-lg font-semibold transition-colors"
-              >
-                {isProcessing ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>Processing...</span>
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-5 h-5" />
-                    <span>{inputMode === 'upload' ? 'Run Prediction' : 'Analyze Live Feed'}</span>
-                  </>
-                )}
-              </button>
-
-              {inputMode === 'upload' && predictionResult && (
-                <button
-                   onClick={handleClearResults}
-                   className="w-full mt-2 flex items-center justify-center space-x-2 bg-gray-600 hover:bg-gray-700 text-white py-3 px-4 rounded-lg font-semibold transition-colors"
-                 >
-                   <Square className="w-5 h-5" />
-                   <span>Start Over</span>
-                 </button>
-              )}
-
-
-            </div>
-          </div>
-
-          {/* Model Information Display - Shows selected model details */}
-          {selectedModelData && (
-            <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold mb-4">Model Information</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Accuracy:</span>
-                  <span className="font-semibold">{selectedModelData.accuracy}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Processing Time:</span>
-                  <span className="font-semibold">{selectedModelData.processingTime}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Model Type:</span>
-                  <span className="font-semibold">Deep Learning YOLOv11s</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Training Data:</span>
-                  <span className="font-semibold">{selectedModelData.trainingData}</span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right Panel - Media preview and analysis results */}
-        <div className="space-y-6">
-          {/* Media Preview Section - Shows uploaded files or live camera feed */}
-          <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold mb-4">Media Preview</h3>
-            
-            <div className="w-full h-96 bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center">
-                              {inputMode === 'camera' && isStreamActive ? (
-                  <img
-                    src="http://127.0.0.1:8000/video_feed"
-                    alt="Live Camera Feed"
-                    className="max-w-full max-h-full object-contain"
-                  />
-                ) : inputMode === 'camera' ? (
-                  <div className="text-center text-gray-500">
-                    <Camera className="w-16 h-16 mx-auto mb-2" />
-                    <p>Camera not started</p>
-                  </div>
-                ) : realtimeStreamUrl ? (
-                  <img
-                    src={realtimeStreamUrl}
-                    alt="Real-time Video Processing"
-                    className="max-w-full max-h-full object-contain"
-                  />
-                ) : streamingUrl ? (
-                  <img
-                    src={streamingUrl}
-                    alt="Processed Video Stream"
-                    className="max-w-full max-h-full object-contain"
-                  />
-                ) : previewUrl ? (
-                  uploadedFile?.type.startsWith('video/') ? (
-                    <video
-                      src={previewUrl}
-                      controls
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  ) : (
-                    <img
-                      src={previewUrl}
-                      alt="Prediction Result"
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  )
-                ) : (
-                  // Fallback when no preview
-                  <div className="text-center text-gray-400">
-                    <ImageIcon className="w-16 h-16 mx-auto mb-2" />
-                    <p>No media uploaded</p>
-                  </div>
-                )}              
-            </div>
-          </div>
-
-          {/* Prediction Results Section - Displays AI analysis results */}
-          {predictionResult && (
-            <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold mb-4">Prediction Results</h3>
-              
-              <div className="space-y-4">
-                {/* Risk Assessment Display - Shows drowning risk level and confidence */}
-                <div className="p-4 border rounded-lg">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-semibold">Risk Assessment</h4>
-                    <div className="flex items-center space-x-2">
-                      <Clock className="w-4 h-4 text-gray-500" />
-                      <span className="text-sm text-gray-500">
-                        {predictionResult.analysis?.processingTime || 'Real-time'}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  {(() => {
-                    const analysis = predictionResult.analysis;
-                    if (!analysis) {
-                      return (
-                        <div className="flex items-center space-x-3 p-3 rounded-lg bg-blue-100 text-blue-600">
-                          <Monitor className="w-6 h-6" />
-                          <div>
-                            <div className="font-semibold">Live Detection Active</div>
-                            <div className="text-sm">Real-time analysis running</div>
-                          </div>
-                        </div>
-                      );
-                    }
-                    
-                    const risk = getRiskLevel(analysis.confidence, analysis.isDrowning);
-                    const RiskIcon = risk.icon;
-                    return (
-                      <div className={`flex items-center space-x-3 p-3 rounded-lg ${risk.color}`}>
-                        <RiskIcon className="w-6 h-6" />
-                        <div>
-                          <div className="font-semibold">{analysis.riskLevel || risk.level}</div>
-                          <div className="text-sm">
-                            Confidence: {(analysis.confidence * 100).toFixed(1)}%
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                {/* Safety Recommendations - AI-generated safety suggestions */}
-                {predictionResult.analysis?.recommendations && (
-                  <div className="p-4 border rounded-lg">
-                    <h4 className="font-semibold mb-3">Recommendations</h4>
-                    <div className="space-y-1">
-                      {predictionResult.analysis.recommendations.map((rec: string, index: number) => (
-                        <div key={index} className="flex items-center space-x-2 text-sm">
-                          <CheckCircle className="w-4 h-4 text-blue-500" />
-                          <span>{rec}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Detected Objects List - Shows all objects found in the analysis */}
-                {predictionResult.analysis?.detectedObjects && predictionResult.analysis.detectedObjects.length > 0 && (
-                  <div className="p-4 border rounded-lg">
-                    <h4 className="font-semibold mb-3">Detected Objects</h4>
-                    <div className="space-y-2">
-                      {predictionResult.analysis.detectedObjects.map((obj: any, index: number) => (
-                        <div key={index} className="flex items-center justify-between text-sm">
-                          <span className="capitalize">{obj.type.replace('_', ' ')}</span>
-                          <span className="font-medium">{(obj.confidence * 100).toFixed(1)}%</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                {/* Video Download Section - Download processed video with annotations */}
-                {downloadAvailable && (
-                  <div className="mt-4 pt-4 border-t">
-                    <button
-                      onClick={handleDownloadVideo}
-                      className="w-full flex items-center justify-center space-x-2 bg-green-600 hover:bg-green-700 text-white py-3 px-4 rounded-lg font-semibold transition-colors"
-                    >
-                      <FileVideo className="w-5 h-5" />
-                      <span>Download Processed Video</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+      {mode !== 'webcam' && <input key={mode} aria-label="Tệp đầu vào" type="file" accept={mode === 'image' ? 'image/*' : 'video/*'} disabled={active || busy} onChange={e => setFile(e.target.files?.[0] || null)} />}
+      <div className="flex flex-wrap gap-3">
+        <button className="bg-teal-700 text-white rounded px-4 py-2 disabled:opacity-50" disabled={active || busy || (mode !== 'webcam' && !file)} onClick={() => void start()}>{busy ? 'Đang xử lý…' : 'Bắt đầu'}</button>
+        <button className="bg-red-700 text-white rounded px-4 py-2 disabled:opacity-50" disabled={!active || busy} onClick={() => void stop()}>Dừng nguồn</button>
+        <button className={inputStyle} onClick={() => void enableSound()}>{sound ? 'Tắt âm cảnh báo' : 'Bật âm cảnh báo'}</button>
+        {session?.download_available && <a className={inputStyle} href={`${API_URL}/download_processed_video/${session.session_id}`}>Tải video kết quả</a>}
+      </div>
+      <p className="text-sm text-slate-600">Trạng thái: {session?.status || 'Chưa chạy'} · Sự kiện: {connected ? 'Đã kết nối' : active ? 'Đang kết nối lại' : 'Đã dừng'}</p>
+      {error && <p role="alert" className="text-red-700">{error}</p>}
+    </div>
+    <div className="grid lg:grid-cols-3 gap-5">
+      <div className="lg:col-span-2 bg-slate-900 rounded-xl min-h-64 flex items-center justify-center overflow-hidden">
+        {image ? <img src={image} alt="Kết quả nhận diện ảnh" className="w-full" /> : session ?
+          <img key={session.session_id} src={`${API_URL}/realtime_video_stream/${session.session_id}`} alt="Luồng nhận diện AI" className="w-full" /> :
+          <p className="text-slate-300 p-8">Chọn video, webcam hoặc ảnh để bắt đầu.</p>}
+      </div>
+      <div className="bg-white rounded-xl p-5 shadow space-y-3">
+        <h3 className="font-bold">Trạng thái từng người</h3>
+        {image && <p className="text-sm text-slate-600">Ảnh tĩnh: chỉ phân loại, không xác nhận cảnh báo theo thời gian.</p>}
+        {!people.length && <p>Chưa có người được theo dõi; chưa thể kết luận an toàn.</p>}
+        {people.map(person => <div key={person.track_id} className={`rounded p-3 border ${person.alert_level === 'drowning_alert' ? 'bg-red-100 border-red-500' : person.alert_level === 'struggling_alert' ? 'bg-yellow-100 border-yellow-500' : 'bg-slate-50'}`}>
+          <p className="font-semibold">ID {person.track_id} · {person.class}</p>
+          <p>{person.alert_level ? levelNames[person.alert_level] || person.alert_level : 'Kết quả ảnh tĩnh'}</p>
+          <p className="text-sm">Confidence: {person.confidence === null ? '—' : `${(person.confidence * 100).toFixed(1)}%`}</p>
+        </div>)}
       </div>
     </div>
-  );
+    {metrics && <div className="bg-white p-5 rounded-xl shadow grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+      {Object.entries({ 'FPS thực': metrics.fps, 'Xử lý (ms)': metrics.processing_ms, 'p50 (ms)': metrics.latency_p50_ms,
+        'p95 (ms)': metrics.latency_p95_ms, 'Đọc (ms)': metrics.read_ms, 'GAN (ms)': metrics.gan_ms,
+        'YOLO (ms)': metrics.yolo_ms, 'Tracking (ms)': metrics.tracking_ms, 'JPEG (ms)': metrics.jpeg_ms,
+        'RAM tiến trình (MB)': metrics.rss_mb, 'CPU tiến trình (%)': metrics.cpu_percent }).map(([label, value]) => <p key={label}>{label}: <strong>{value ?? '—'}</strong></p>)}
+    </div>}
+  </div>;
 }

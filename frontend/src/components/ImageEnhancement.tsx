@@ -1,8 +1,9 @@
 // Underwater image and video enhancement component using FUnIE-GAN model
 // Provides real-time enhancement for uploaded media and live camera feeds
-import React, { useState, useEffect } from 'react';
-import { ArrowRight, Play, Pause, RotateCcw, Settings, Zap, Eye, Upload, Camera, Monitor, FileVideo, Image as ImageIcon, Download, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { ArrowRight, RotateCcw, Settings, Zap, Eye, Upload, Camera, FileVideo, Image as ImageIcon, Download, AlertCircle } from 'lucide-react';
 import { api, VideoEnhancementResult, GanModelStatus, ImageEnhancementResult, RealTimeMetrics } from '../services/api';
+import type { WebcamStatus } from '../services/api';
 
 // Main image enhancement component with AI-powered underwater processing
 export default function ImageEnhancement() {
@@ -10,11 +11,11 @@ export default function ImageEnhancement() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [inputMode, setInputMode] = useState<'upload' | 'camera'>('upload');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [, setPreviewUrl] = useState<string | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isStreamActive, setIsStreamActive] = useState(false);
   const [isBackendWebcamActive, setIsBackendWebcamActive] = useState(false);
-  const [webcamStatus, setWebcamStatus] = useState<any>(null);
+  const [webcamStatus, setWebcamStatus] = useState<WebcamStatus | null>(null);
   const [enhancementResult, setEnhancementResult] = useState<VideoEnhancementResult | null>(null);
   const [imageEnhancementResult, setImageEnhancementResult] = useState<ImageEnhancementResult | null>(null);
   const [ganModelStatus, setGanModelStatus] = useState<GanModelStatus | null>(null);
@@ -30,6 +31,25 @@ export default function ImageEnhancement() {
   useEffect(() => {
     checkGanModelStatus();
   }, []);
+
+  useEffect(() => {
+    if (!streamSessionId || !isRealTimeStreaming) return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      void api.getVideoSessionStatus(streamSessionId).then(status => {
+        if (cancelled) return;
+        setEnhancementResult(previous => previous ? { ...previous, frame_count: status.frame_count || 0 } : previous);
+        if (status.status === 'failed' || status.status === 'stopped') {
+          setError(status.error || 'Enhancement stopped');
+          setIsRealTimeStreaming(false);
+          setEnhancementResult(null);
+        } else if (status.status === 'completed') {
+          setIsRealTimeStreaming(false);
+        }
+      }).catch(err => { if (!cancelled) setError(String(err)); });
+    }, 1000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [streamSessionId, isRealTimeStreaming]);
 
   // Real-time metrics polling for active enhancement streams
    useEffect(() => {
@@ -93,7 +113,7 @@ export default function ImageEnhancement() {
   };
 
   // Stop camera and cleanup all streams
-  const stopCamera = async () => {
+  const stopCamera = useCallback(async () => {
     try {
       if (isBackendWebcamActive) {
         const result = await api.stopWebcam();
@@ -116,7 +136,7 @@ export default function ImageEnhancement() {
       console.error('Error stopping camera:', error);
       setError(`Error stopping camera: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  };
+  }, [isBackendWebcamActive, stream]);
 
   // Cleanup camera streams on component unmount
   React.useEffect(() => {
@@ -132,7 +152,7 @@ export default function ImageEnhancement() {
     if (inputMode === 'upload') {
       stopCamera();
     }
-  }, [inputMode]);
+  }, [inputMode, stopCamera]);
 
   // Handle file upload and preview generation
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -235,7 +255,7 @@ export default function ImageEnhancement() {
               <span className="text-white text-xs">✓</span>
             </div>
             <span className="text-green-800">
-              Video enhanced successfully! Processed {enhancementResult.frame_count} frames in {enhancementResult.processing_time}.
+              {isRealTimeStreaming ? 'Enhancement running.' : 'Enhancement completed.'} Processed {enhancementResult.frame_count} frames.
             </span>
           </div>
         </div>

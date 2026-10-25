@@ -18,8 +18,9 @@ def save_temp_file(file: UploadFile):
     """Save uploaded file to temporary location."""
     file_ext = os.path.splitext(file.filename)[1].lower()
     temp_filename = f"{uuid.uuid4()}{file_ext}"
-    temp_path = os.path.join("temp_uploads", temp_filename)
-    os.makedirs("temp_uploads", exist_ok=True)
+    from .settings import ROOT
+    temp_path = str(ROOT / "temp_uploads" / temp_filename)
+    os.makedirs(str(ROOT / "temp_uploads"), exist_ok=True)
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     return temp_path
@@ -113,68 +114,15 @@ def calculate_visibility_metrics(original_image, enhanced_image):
 
 
 def create_analysis_result(detections, model_type, frame_count=1):
-    """Create analysis result from detections."""
-    if not detections:
-        return {
-            "isDrowning": False,
-            "confidence": 0.0,
-            "riskLevel": "Safe",
-            "recommendations": ["No drowning incidents detected", "Continue monitoring"],
-            "detectedObjects": []
-        }
-
-    # Count detections by class
-    drowning_count = sum(1 for det in detections if det.get("class") == "drowning")
-    normal_count = sum(1 for det in detections if det.get("class") == "normal")
-
-    # Safely calculate average confidence
-    confidences = [det.get("confidence") for det in detections if det.get("confidence") is not None]
-    avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
-
-    # Determine if drowning is detected
-    is_drowning = drowning_count > 0
-
-    # Risk level & recommendations
-    if drowning_count > 0:
-        if avg_confidence > 0.7:
-            risk_level = "Critical"
-            recommendations = [
-                "Immediate intervention required",
-                "Alert lifeguards immediately",
-                "Prepare rescue equipment"
-            ]
-        else:
-            risk_level = "High Risk"
-            recommendations = [
-                "Monitor closely",
-                "Prepare for potential intervention",
-                "Alert nearby personnel"
-            ]
-    else:
-        risk_level = "Safe"
-        recommendations = [
-            "No immediate danger detected",
-            "Continue normal monitoring",
-            "Maintain safety protocols"
-        ]
-
-    # Build detected objects list
-    detected_objects = []
-    for det in detections:
-        detected_objects.append({
-            "type": det.get("class"),
-            "confidence": det.get("confidence") if det.get("confidence") is not None else 0.0,
-            "track_id": det.get("track_id")
-        })
-
-    return {
-        "isDrowning": is_drowning,
-        "confidence": avg_confidence,
-        "riskLevel": risk_level,
-        "recommendations": recommendations,
-        "detectedObjects": detected_objects,
-        "processingTime": f"{frame_count * 0.1:.2f}s"
-    }
+    from .settings import normalize_class
+    drowning = [d for d in detections if normalize_class(d["class"]) == "drowning"]
+    struggling = [d for d in detections if normalize_class(d["class"]) == "struggling"]
+    selected = drowning or struggling or detections
+    confidence = max((d.get("confidence") or 0 for d in selected), default=0)
+    return {"isDrowning": bool(drowning), "confidence": confidence,
+            "riskLevel": "Drowning detected" if drowning else "Struggling detected" if struggling else "No distress detected" if detections else "Unknown",
+            "recommendations": ["Single-image classification; temporal confirmation is unavailable"],
+            "detectedObjects": [{"type": normalize_class(d["class"]), "confidence": d.get("confidence"), "track_id": d.get("track_id")} for d in detections]}
 
 
 def create_side_by_side_video(original_path, enhanced_path, output_path, fps=30):

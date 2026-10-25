@@ -7,12 +7,11 @@ import DrowningDetection from './components/DrowningDetection';
 import ImageEnhancement from './components/ImageEnhancement';
 import EmergencyMap from './components/EmergencyMap';
 import { Waves, Shield } from 'lucide-react';
-import { getUser, isAuthenticated, api } from './services/api';
+import { api, User } from './services/api';
 
 function App() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState('surveillance'); // Will be set after login
-  const [isSystemActive, setIsSystemActive] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isLoading, setIsLoading] = useState(true);
 
@@ -43,7 +42,7 @@ function App() {
     return () => clearInterval(timer);
   }, []);
 
-  const handleLogin = (userData: any) => {
+  const handleLogin = (userData: User) => {
     setUser(userData);
     setActiveTab('surveillance'); // Set default tab after successful login
   };
@@ -80,9 +79,8 @@ function App() {
     switch (activeTab) {
       case 'surveillance':
         return (
-          <SurveillanceTab 
-            isSystemActive={isSystemActive} 
-            setIsSystemActive={setIsSystemActive} 
+          <SurveillanceTab
+
           />
         );
       case 'detection':
@@ -93,9 +91,8 @@ function App() {
         return <EmergencyMap />;
       default:
         return (
-          <SurveillanceTab 
-            isSystemActive={isSystemActive} 
-            setIsSystemActive={setIsSystemActive} 
+          <SurveillanceTab
+
           />
         );
     }
@@ -119,28 +116,22 @@ function App() {
                 <Shield className="w-5 h-5 text-green-400" />
                 <span className="text-sm">System Secure</span>
               </div>
-              <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                isSystemActive 
-                  ? 'bg-green-500 text-white' 
-                  : 'bg-red-500 text-white'
-              }`}>
-                {isSystemActive ? 'ACTIVE' : 'INACTIVE'}
-              </div>
+              <div className="px-3 py-1 rounded-full text-xs font-semibold bg-teal-700 text-white">ONE SOURCE</div>
             </div>
           </div>
           <div className="flex items-center space-x-4">
             <UserProfile user={user} onLogout={handleLogout} />
             <div className="text-right">
               <div className="text-white text-lg font-bold">
-                {currentTime.toLocaleDateString('en-US', { 
-                  weekday: 'short', 
-                  year: 'numeric', 
-                  month: 'short', 
-                  day: 'numeric' 
+                {currentTime.toLocaleDateString('en-US', {
+                  weekday: 'short',
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric'
                 })}
               </div>
               <div className="text-blue-200 text-base font-semibold">
-                {currentTime.toLocaleTimeString('en-US', { 
+                {currentTime.toLocaleTimeString('en-US', {
                   hour12: false,
                   hour: '2-digit',
                   minute: '2-digit',

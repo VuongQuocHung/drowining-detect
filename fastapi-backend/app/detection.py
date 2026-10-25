@@ -1,255 +1,86 @@
-"""
-Detection and Enhancement Functions
-
-This module contains all detection, tracking, and enhancement functions
-for the drowning detection system.
-"""
-
+"""Detection adapters. Temporal alarm decisions belong to each session."""
 import time
 import cv2
 import numpy as np
 import torch
-import pygame
-import tensorflow as tf
+from .settings import ROOT, settings, normalize_class
 from utils.data_utils import preprocess, deprocess
 
-
-# Global variables for tracking
-consecutive_drowning_count = 0
-alarm_sound_path = "sound/alarm.mp3"
-realtime_metrics = {
-    "processing_speed_ms": 0.0,
-    "real_time_speed_fps": 0.0,
-    "latency_per_frame_ms": 0.0,
-    "last_updated": 0.0
-}
-
-# Color mapping for detection classes
-CLASS_COLORS = {
-    "normal": (0, 255, 0),      # Green for normal behavior
-    "drowning": (0, 0, 255)    # Red for drowning detection
-}
-
+realtime_metrics = {"processing_speed_ms": 0., "real_time_speed_fps": 0., "latency_per_frame_ms": 0., "last_updated": 0.}
+CLASS_COLORS = {"swimming": (0, 200, 0), "struggling": (0, 200, 255), "drowning": (0, 0, 255), "unknown": (128, 128, 128)}
 
 def play_alarm_sound():
-    """Play the drowning alarm sound using pygame."""
+    if not settings.backend_alarm:
+        return
     try:
+        import pygame
         if not pygame.mixer.get_init():
             pygame.mixer.init()
-        pygame.mixer.music.load(alarm_sound_path)
+        pygame.mixer.music.load(str(ROOT / "sound/alarm.mp3"))
         pygame.mixer.music.play()
-        print("🚨 DROWNING ALARM TRIGGERED! Playing alarm sound...")
-    except Exception as e:
-        print(f"❌ Error playing alarm sound: {e}")
-
-
-def _color_for_class(name: str):
-    """Get BGR color tuple for a given class name."""
-    name = (name or "").lower()
-    if name == "normal":
-        return (0, 255, 0)      # Green
-    if name == "drowning":
-        return (0, 0, 255)      # Red
-    return (255, 255, 0)        # Yellow (default)
-
-
-def draw_fancy_box(frame, x1, y1, x2, y2, color, label=None):
-    """Draw a styled bounding box with optional label on the frame."""
-    thickness = 2
-    cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness, cv2.LINE_AA)
-
-    if label:
-        (tw, th), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
-        th = th + baseline
-        overlay = frame.copy()
-        cv2.rectangle(overlay, (x1, y1 - th - 4), (x1 + tw + 4, y1), color, -1, cv2.LINE_AA)
-        alpha = 0.6
-        frame = cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
-        cv2.putText(frame, label, (x1 + 2, y1 - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv2.LINE_AA)
-    return frame
-
+    except Exception as exc:
+        print(f"Backend alarm unavailable: {exc}")
 
 def check_drowning_and_trigger_alarm(detections, frame):
-    """Check for drowning detections and trigger alarm if needed."""
-    global consecutive_drowning_count
-    
-    # Check if any drowning detection exists in current frame
-    drowning_detected = False
-    
-    # Handle different detection formats
-    if detections and len(detections) > 0:
-        if isinstance(detections[0], dict):  # From track_with_deepsort
-            drowning_detected = any(detection["class"].lower() == "drowning" for detection in detections)
-        elif isinstance(detections[0], tuple):  # From run_detection
-            drowning_detected = any(detection[4].lower() == "drowning" for detection in detections)
-    
-    if drowning_detected:
-        consecutive_drowning_count += 1
-        
-        # Trigger alarm every 5 consecutive detections (at 5, 10, 15, etc.)
-        if consecutive_drowning_count % 5 == 0:
-            play_alarm_sound()
-            print(f"🚨 ALARM TRIGGERED! Drowning detected {consecutive_drowning_count} times consecutively!")
-    else:
-        # Reset counter if no drowning detected
-        consecutive_drowning_count = 0
-    
+    """Compatibility helper: still images never update temporal alert state."""
     return frame
 
-
-def run_detection(model, frame, conf_thresh: float = 0.50):
-    """Run YOLO detection on a single frame with confidence threshold."""
-    with torch.no_grad():
-        results = model(frame, conf=conf_thresh, verbose=False)
-    
+def run_detection(model, frame, conf_thresh=settings.confidence):
+    with torch.inference_mode():
+        results = model(frame, conf=conf_thresh, iou=0.4, agnostic_nms=True, verbose=False)
     detections = []
     for result in results:
         if result.boxes is not None:
             for box in result.boxes:
-                x1, y1, x2, y2 = map(int, box.xyxy[0].cpu())
-                conf = float(box.conf[0].cpu())
-                cls_name = result.names[int(box.cls[0].cpu())]
-                detections.append((x1, y1, x2, y2, cls_name, conf))
+                coords = tuple(map(int, box.xyxy[0].cpu()))
+                label = normalize_class(result.names[int(box.cls[0].cpu())])
+                detections.append((*coords, label, float(box.conf[0].cpu())))
     return detections
 
-
 def draw_detections(frame, detections):
-    """Draw detection bounding boxes on frame."""
-    for x1, y1, x2, y2, cls_name, conf in detections:
-        color = CLASS_COLORS.get(cls_name, (255, 255, 255))
-        label = f"{cls_name} {conf:.2f}" if conf is not None else cls_name
-        frame = draw_fancy_box(frame, x1, y1, x2, y2, color, label)
+    for x1, y1, x2, y2, label, confidence in detections:
+        color = CLASS_COLORS.get(label, CLASS_COLORS["unknown"])
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        cv2.putText(frame, f"{label} {confidence:.2f}", (x1, max(18, y1-5)), cv2.FONT_HERSHEY_SIMPLEX, .6, color, 2)
     return frame
 
-
-def track_with_deepsort(model, frame, deepsort, conf_thresh: float = 0.50, min_area: float = 500.0, is_video: bool = True):
-    """Perform object detection with YOLO and tracking with DeepSORT."""
-    # YOLO inference
-    with torch.no_grad():
-        res = model(frame, conf=conf_thresh, iou=0.4, verbose=False)[0]
-
-    xywhs, confs, class_ids, raw_boxes = [], [], [], []
-    if res.boxes is not None:
-        for box in res.boxes:
-            x1, y1, x2, y2 = box.xyxy[0].tolist()
-            conf = float(box.conf[0])
-            cid = int(box.cls[0])
-            w, h = x2 - x1, y2 - y1
-            if w * h < min_area:
-                continue
-            xc, yc = x1 + w / 2, y1 + h / 2
-            xywhs.append([xc, yc, w, h])
-            confs.append(conf)
-            class_ids.append(cid)
-            raw_boxes.append((x1, y1, x2, y2, cid, conf))
-
+def track_with_deepsort(model, frame, deepsort, conf_thresh=settings.confidence, min_area=settings.min_area, is_video=True, timings=None):
+    started = time.perf_counter()
+    raw = run_detection(model, frame, conf_thresh)
+    if timings is not None:
+        timings["yolo_ms"] = (time.perf_counter()-started)*1000
+    started = time.perf_counter()
+    raw = [b for b in raw if (b[2]-b[0])*(b[3]-b[1]) >= min_area]
+    labels = ["swimming", "struggling", "drowning", "unknown"]
     tracked = []
-
-    if is_video:  
-        # DeepSORT update
-        outputs = None
-        if len(xywhs) > 0:
-            xywhs = torch.tensor(xywhs)
-            confs = torch.tensor(confs)
-            outputs = deepsort.update(xywhs, confs, class_ids, frame)
-
-        # Build results
-        if outputs is not None and len(outputs) > 0:
-            for out in outputs:
-                x1, y1, x2, y2, tid, cid = out
-                cname = res.names.get(int(cid), str(cid))
-                conf = None
-                # find matching confidence (optional)
-                for b in raw_boxes:
-                    if abs(b[0]-x1) < 5 and abs(b[1]-y1) < 5:
-                        conf = b[-1]
-                        break
-
-                color = _color_for_class(cname)
-                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                cv2.putText(frame, f"ID:{tid} {cname}" + (f" {conf:.2f}" if conf else ""),
-                            (x1, max(0, y1-5)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-
-                tracked.append({
-                    "x1": int(x1), "y1": int(y1), "x2": int(x2), "y2": int(y2),
-                    "track_id": int(tid),
-                    "class": cname,
-                    "class_id": int(cid),
-                    "confidence": conf if conf else 0.0
-                })
-
-    else:  
-        # Single image mode: restart IDs for each image
-        local_id_counter = 0
-        for (x1, y1, x2, y2, cid, conf) in raw_boxes:
-            local_id_counter += 1
-            cname = res.names.get(cid, str(cid))
-            color = _color_for_class(cname)
-            cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
-            cv2.putText(frame, f"ID:{local_id_counter} {cname} {conf:.2f}",
-                        (int(x1), max(0, int(y1)-5)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-
-            tracked.append({
-                "x1": int(x1), "y1": int(y1), "x2": int(x2), "y2": int(y2),
-                "track_id": local_id_counter,
-                "class": cname,
-                "class_id": cid,
-                "confidence": conf
-            })
-
-    # Active tracks count overlay
-    active_count = len(tracked)
-    count_text = f"Active Tracks: {active_count}"
-
-    # Calculate text size
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.7
-    thickness = 2
-    text_size = cv2.getTextSize(count_text, font, font_scale, thickness)[0]
-
-    # Box padding
-    pad_x, pad_y = 12, 8
-    x, y = 10, 40
-    box_x1, box_y1 = x - pad_x, y - text_size[1] - pad_y
-    box_x2, box_y2 = x + text_size[0] + pad_x, y + pad_y
-
-    # Draw semi-transparent background
-    overlay = frame.copy()
-    cv2.rectangle(overlay, (box_x1, box_y1), (box_x2, box_y2), (0, 0, 0), -1)
-    alpha = 0.5
-    cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
-
-    # Draw border
-    cv2.rectangle(frame, (box_x1, box_y1), (box_x2, box_y2), (255, 255, 255), 2)
-
-    # Put text on top
-    cv2.putText(frame, count_text, (x, y), font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
-
-    # Drowning alert check
-    frame = check_drowning_and_trigger_alarm(tracked, frame)
-
+    if not is_video:
+        tracked = [dict(x1=b[0], y1=b[1], x2=b[2], y2=b[3], **{"class": b[4]}, confidence=b[5], class_id=labels.index(b[4]), track_id=i+1) for i,b in enumerate(raw)]
+    else:
+        xywh = [[(b[0]+b[2])/2, (b[1]+b[3])/2, b[2]-b[0], b[3]-b[1]] for b in raw]
+        # Always predict/update, including empty frames, so tracks actually age.
+        deepsort.update(torch.tensor(xywh, dtype=torch.float32).reshape(-1,4),
+                        torch.tensor([b[5] for b in raw]), [labels.index(b[4]) for b in raw], frame)
+        for track in deepsort.tracker.tracks:
+            if not track.is_confirmed() or track.time_since_update != 0:
+                continue
+            x1,y1,x2,y2 = deepsort._tlwh_to_xyxy(track.to_tlwh())
+            tracked.append(dict(x1=x1,y1=y1,x2=x2,y2=y2,track_id=int(track.track_id),
+                                class_id=int(track.oid),confidence=track.confidence, **{"class": labels[int(track.oid)]}))
+    if timings is not None:
+        timings["tracking_ms"] = (time.perf_counter()-started)*1000
+    for det in tracked:
+        label = det["class"]
+        color = CLASS_COLORS[label]
+        cv2.rectangle(frame,(det["x1"],det["y1"]),(det["x2"],det["y2"]),color,2)
+        cv2.putText(frame, f"ID:{det['track_id']} {label} {det['confidence']:.2f}",
+                    (det["x1"],max(18,det["y1"]-5)),cv2.FONT_HERSHEY_SIMPLEX,.6,color,2)
     return frame, tracked
 
-
-def detection_with_enhance(frame, model, gan_model, enhancement=False, conf_thresh: float = 0.50):
-    """Run detection with optional enhancement and confidence threshold."""
-    # Step 1: Enhance only if requested + underwater + GAN available
+def detection_with_enhance(frame, model, gan_model, enhancement=False, conf_thresh=settings.confidence):
     if enhancement and gan_model is not None:
-        enhanced_frame, success = enhance_frame(frame, gan_model, side_by_side=False)
-        if success:
-            frame = enhanced_frame
-
-    # Step 2: Run detection with confidence threshold
+        frame, _ = enhance_frame(frame, gan_model)
     detections = run_detection(model, frame, conf_thresh)
-
-    # Step 3: Draw results
-    processed_frame = draw_detections(frame, detections)
-
-    # Step 4: Check drowning + trigger alarm
-    processed_frame = check_drowning_and_trigger_alarm(detections, processed_frame)
-
-    return processed_frame, detections
-
+    return draw_detections(frame, detections), detections
 
 def enhance_frame(frame, gan_model, side_by_side=False):
     """Enhance a single frame using GAN model for underwater image enhancement."""
@@ -329,9 +160,9 @@ def get_realtime_metrics():
     
     if metrics_age > 5.0:  # If metrics are older than 5 seconds, return default values
         return {
-            "processing_speed_ms": 40.0,
-            "real_time_speed_fps": 25.0,
-            "latency_per_frame_ms": 40.0,
+            "processing_speed_ms": 0.0,
+            "real_time_speed_fps": 0.0,
+            "latency_per_frame_ms": 0.0,
             "metrics_available": False,
             "message": "No recent metrics available"
         }

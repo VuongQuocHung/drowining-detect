@@ -1,6 +1,7 @@
 // API service module for AquaGuard AI pool surveillance system backend communication
 // API base URL
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+import type { SessionInfo, PersonDetection } from './sessions';
 
 // TypeScript interfaces for API request/response data structures
 export interface LoginCredentials {
@@ -39,7 +40,7 @@ export interface WebcamStatus {
 
 export interface PredictionResult {
   type: 'image' | 'video' | 'camera';
-  detections?: any[];
+  detections?: PersonDetection[];
   image_base64?: string;
   video_path?: string;
   session_id?: string;
@@ -49,7 +50,7 @@ export interface PredictionResult {
     confidence: number;
     riskLevel: string;
     recommendations: string[];
-    detectedObjects: any[];
+    detectedObjects: { type: string; confidence: number | null; track_id: number }[];
     processingTime: string;
   };
   // Camera-specific properties
@@ -184,7 +185,7 @@ export const api = {
   },
 
   // Authentication functions for user login
-  async login(email: string, password: string): Promise<{ success: boolean; token?: string; user?: any; message?: string }> {
+  async login(email: string, password: string): Promise<{ success: boolean; token?: string; user?: User; message?: string }> {
     const response = await fetch(`${API_BASE_URL}/login`, {
       method: 'POST',
       headers: {
@@ -290,7 +291,7 @@ export const api = {
   },
 
   // Real-time video processing with live streaming capabilities
-  async processVideoRealtime(modelType: string, file: File, enhancement: boolean = false): Promise<string> {
+  async processVideoRealtime(modelType: string, file: File, enhancement: boolean = false): Promise<{ streamUrl: string; sessionId: string; modelType: string }> {
     const formData = new FormData();
     formData.append('model_type', modelType);
     formData.append('file', file);
@@ -319,7 +320,7 @@ export const api = {
   },
 
   // Check status of ongoing video processing session
-  async getVideoSessionStatus(sessionId: string): Promise<any> {
+  async getVideoSessionStatus(sessionId: string): Promise<SessionInfo> {
     const response = await fetch(`${API_BASE_URL}/video_session_status/${sessionId}`);
     
     if (!response.ok) {

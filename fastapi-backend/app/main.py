@@ -6,13 +6,10 @@ includes routers, and handles startup events.
 """
 
 import os
-import numpy as np
-import torch
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .models_loader import initialize_models, warm_up_models
-from .gpu_utils import setup_gpu, optimize_tensorflow_for_inference, setup_pytorch_cuda
 from . import routes
 
 # Set TensorFlow legacy mode
@@ -44,8 +41,8 @@ async def startup_event():
     print("🚀 FastAPI backend starting up...")
     
     # Setup GPU
-    setup_gpu()
-    optimize_tensorflow_for_inference()
+    # TensorFlow is initialized lazily when enhancement is requested.
+
     
     # Initialize models
     print("📊 Loading models...")
@@ -69,3 +66,9 @@ async def startup_event():
 def read_root():
     """Root endpoint."""
     return {"message": "Welcome to the FastAPI backend!"}
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    from .sessions import sessions
+    sessions.close()

@@ -3,9 +3,10 @@
 import React, { useState } from 'react';
 import { User, Lock, Eye, EyeOff, Waves, Shield } from 'lucide-react';
 import { api, setAuthToken, setUser } from '../services/api';
+import type { User as AuthUser } from '../services/api';
 
 interface LoginFormProps {
-  onLogin: (user: any) => void;
+  onLogin: (user: AuthUser) => void;
 }
 
 export default function LoginForm({ onLogin }: LoginFormProps) {
@@ -27,7 +28,7 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
     try {
       const data = await api.login(credentials.email, credentials.password);
       
-      if (data.success) {
+      if (data.success && data.user) {
         // Store token and user data
         if (data.token) {
           setAuthToken(data.token);

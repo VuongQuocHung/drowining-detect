@@ -1,0 +1,5 @@
+-r requirements.txt
+# Optional legacy Keras 2 loader for the bundled 2019 FUnIE-GAN JSON/H5.
+# Use Python 3.10 or 3.11. GAN is disabled by default.
+tensorflow==2.15.1
+keras==2.15.0

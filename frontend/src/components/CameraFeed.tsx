@@ -35,7 +35,7 @@ export default function CameraFeed({
       // Set to null when video is hidden to reset sound detection
       setCurrentVideo(null);
     }
-  }, [videoRef.current, isVisible]);
+  }, [isVisible]);
 
   // Handle sound detection events and notify parent component
   useEffect(() => {

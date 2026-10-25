@@ -43,7 +43,7 @@ export const useSoundDetection = (
       try {
         // Only create audio context if it doesn't exist
         if (!audioContextRef.current) {
-          audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+          audioContextRef.current = new window.AudioContext();
         }
         
         // Only create analyser if it doesn't exist

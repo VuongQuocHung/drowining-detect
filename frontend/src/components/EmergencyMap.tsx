@@ -1,13 +1,13 @@
 // Interactive emergency response map component for pool surveillance system
 // Displays nearest emergency services with real-time location and calling capabilities
 import { useState, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import { MapPin, Phone, Clock, Navigation, AlertTriangle, Guitar as Hospital, MapPinIcon, Loader, Eye, EyeOff } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapPin, Phone, Navigation, AlertTriangle, Guitar as Hospital, Loader, Eye, EyeOff } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
 // Fix default Leaflet marker icons for proper display
-delete (L.Icon.Default.prototype as any)._getIconUrl;
+delete (L.Icon.Default.prototype as L.Icon.Default & { _getIconUrl?: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
@@ -90,7 +90,7 @@ const parseKMLData = async (): Promise<EmergencyService[]> => {
         
         if (!isNaN(lat) && !isNaN(lng)) {
           // Extract phone number from description
-          const phoneMatch = description.match(/\+60[\s\d\-]+/);
+          const phoneMatch = description.match(/\+60[\s\d-]+/);
           const phone = phoneMatch ? phoneMatch[0] : '999';
           
           // Determine category based on folder or name

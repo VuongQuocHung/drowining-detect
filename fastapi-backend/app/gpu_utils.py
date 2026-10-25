@@ -6,11 +6,12 @@ including CUDA optimizations and memory management.
 """
 
 import torch
-import tensorflow as tf
+
 
 
 def setup_gpu():
     """Configure GPU settings for TensorFlow."""
+    import tensorflow as tf
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
         try:
@@ -26,6 +27,7 @@ def setup_gpu():
 
 def optimize_tensorflow_for_inference():
     """Optimize TensorFlow settings for real-time inference."""
+    import tensorflow as tf
     # Enable mixed precision for faster inference
     try:
         tf.config.optimizer.set_jit(True)  # Enable XLA JIT compilation
@@ -70,7 +72,7 @@ def get_cuda_status():
                 "gpu_memory_allocated_gb": round(torch.cuda.memory_allocated(0) / 1024**3, 2),
                 "gpu_memory_reserved_gb": round(torch.cuda.memory_reserved(0) / 1024**3, 2),
                 "gpu_memory_free_gb": round((torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_reserved(0)) / 1024**3, 2),
-                "gpu_utilization_percent": round((torch.cuda.memory_allocated(0) / torch.cuda.get_device_properties(0).total_memory) * 100, 1)
+                "gpu_memory_allocated_percent": round((torch.cuda.memory_allocated(0) / torch.cuda.get_device_properties(0).total_memory) * 100, 1)
             })
         except Exception as e:
             cuda_info["error"] = f"Error getting GPU info: {str(e)}"

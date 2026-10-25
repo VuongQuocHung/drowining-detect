@@ -1,5 +1,7 @@
 # 🛟 AI Drowning Detection System – Smart Pool Surveillance with Above & Underwater Vision
 
+**Bản tối ưu:** xem [hướng dẫn chạy, API và đánh giá](docs/IMPLEMENTATION.md), [kết quả kiểm tra](docs/VALIDATION.md) và [notebook Kaggle](model_training/Kaggle_Underwater.ipynb). Giám sát dùng kết quả AI thật, trạng thái theo từng người và một nguồn hoạt động mỗi lần. Các hình ảnh/chỉ số trong phần giới thiệu cũ bên dưới là thông tin lịch sử.
+
 The AI Drowning Detection System is an intelligent surveillance solution designed to enhance pool safety by detecting potential drowning incidents in real time.
 This system integrates computer vision, deep learning, and IoT-based alert mechanisms to automatically monitor both above-water and underwater environments.
 

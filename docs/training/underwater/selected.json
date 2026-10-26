@@ -1,0 +1,34 @@
+{
+  "model": "yolo11n",
+  "checkpoint": "/kaggle/working/experiments/underwater/yolo11n/weights/best.pt",
+  "per_class": {
+    "swimming": {
+      "precision": 0.802035591455331,
+      "recall": 0.392,
+      "map50": 0.5941236186658986,
+      "map50_95": 0.35753077877418643
+    },
+    "struggling": {
+      "precision": 0.5447966333289449,
+      "recall": 0.76,
+      "map50": 0.695982686060105,
+      "map50_95": 0.37273507940960593
+    },
+    "drowning": {
+      "precision": 0.684899201722942,
+      "recall": 1.0,
+      "map50": 0.973718423175515,
+      "map50_95": 0.6770426383863778
+    }
+  },
+  "map50": 0.7546082426338395,
+  "map50_95": 0.4691028321900567,
+  "latency_p50_ms": 20.2397344999099,
+  "latency_p95_ms": 20.75317630014979,
+  "speed": {
+    "preprocess": 0.1967331262260106,
+    "inference": 3.490888665777877,
+    "loss": 0.0027943697791165,
+    "postprocess": 1.14679751199502
+  }
+}

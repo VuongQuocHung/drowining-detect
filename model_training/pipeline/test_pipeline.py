@@ -104,13 +104,17 @@ class DatasetTest(unittest.TestCase):
             self.assertEqual(audit(root,output,rename={"person":"swimming"})["names"],["drowning","swimming"])
 
     def test_selection_prefers_latency_only_within_one_point(self):
-        def result(name, recall, precision, latency):
-            return {"model":name,"per_class":{"drowning":{"recall":recall,"precision":precision}},"latency_p50_ms":latency}
+        def result(name, recall, precision, latency, map50=.9):
+            return {"model":name,"map50":map50,"per_class":{"drowning":{"recall":recall,"precision":precision}},"latency_p50_ms":latency}
         slow=result("s",.95,.96,30)
         fast=result("n",.945,.955,10)
         self.assertEqual(choose([slow,fast])["model"],"n")
         fast["per_class"]["drowning"]["recall"] = .90
         self.assertEqual(choose([slow,fast])["model"],"s")
+        # Underwater run 2026-10-26: n reached drowning recall 1.0 by over-predicting drowning.
+        over=result("n",1.0,.685,20.2,map50=.755)
+        balanced=result("s",.949,.765,20.6,map50=.816)
+        self.assertEqual(choose([over,balanced])["model"],"s")
 
     def test_event_metrics_count_episodes_not_repeat_sound(self):
         truth={"video_id":"independent","duration_seconds":60,"events":[{"track_id":1,"start":2,"end":10}]}

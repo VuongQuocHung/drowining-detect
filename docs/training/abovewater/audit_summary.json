@@ -1,0 +1,55 @@
+{
+  "source": "https://universe.roboflow.com/university-g3h71/swimming-and-drowning-detection",
+  "names": [
+    "drowning",
+    "out_of_water",
+    "swimming"
+  ],
+  "total_images": 12355,
+  "errors": [],
+  "split_counts": {
+    "test": 744,
+    "train": 10140,
+    "val": 1471
+  },
+  "class_boxes": {
+    "drowning": 13221,
+    "swimming": 9000,
+    "out_of_water": 785
+  },
+  "split_class_boxes": {
+    "train": {
+      "swimming": 7269,
+      "drowning": 10867,
+      "out_of_water": 616
+    },
+    "val": {
+      "swimming": 1070,
+      "drowning": 1569,
+      "out_of_water": 98
+    },
+    "test": {
+      "drowning": 785,
+      "swimming": 661,
+      "out_of_water": 71
+    }
+  },
+  "exact_cross_split": [],
+  "dropped_exact_duplicates": [
+    "test/11426_jpg.rf.4339d8892901b79f6fa3908bf68fc93a.jpg",
+    "test/drowning1_mp4-14_jpg.rf.1b449e29e61af801f742a10ac5ec8222.jpg",
+    "test/drowning20_mp4-14_jpg.rf.e145614f65b5ef0da3ab2083f59565b6.jpg",
+    "valid/drowning1_mp4-20_jpg.rf.931304f508113f62602e5f320523584e.jpg",
+    "valid/drowning1_mp4-20_jpg.rf.f67444770d56c95bb2afd65603173cfb.jpg",
+    "valid/drowning1_mp4-23_jpg.rf.07d08a89898280aa1bfe18090099c238.jpg",
+    "valid/drowning1_mp4-26_jpg.rf.2119e8c312fc551da07c4bdf0b7eede7.jpg",
+    "valid/drowning20_mp4-0_jpg.rf.d5bae028b8c3c144d046518c5c741624.jpg",
+    "valid/drowning20_mp4-8_jpg.rf.5754428ebf7b1baa665cb04713557fb5.jpg",
+    "valid/drowning50_mp4_mp4-7_jpg.rf.ad0baae2c4fed5e5e9fc9a249b639096.jpg"
+  ],
+  "grouped": false,
+  "limitations": [
+    "Source groups unknown; original split retained. Independent labeled video evaluation required."
+  ],
+  "near_cross_split_count": 164042
+}

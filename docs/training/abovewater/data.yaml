@@ -1,0 +1,8 @@
+names:
+  0: drowning
+  1: out_of_water
+  2: swimming
+path: /kaggle/input/datasets/vngquchng/drowning-detection-computer-vision-model
+train: /kaggle/working/prepared/abovewater/train.txt
+val: /kaggle/working/prepared/abovewater/val.txt
+test: /kaggle/working/prepared/abovewater/test.txt

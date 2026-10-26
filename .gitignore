@@ -16,3 +16,5 @@ model_training/prepared/
 **/checkpoint/ckpt.t7
 *.tsbuildinfo
 DEMO PHOTO/
+results/
+results.zip

@@ -1,0 +1,7 @@
+names:
+  0: swimming
+  1: struggling
+  2: drowning
+path: /kaggle/input/datasets/vngquchng/underwate-vqh/datasets
+train: /kaggle/working/prepared/underwater/train.txt
+val: /kaggle/working/prepared/underwater/val.txt

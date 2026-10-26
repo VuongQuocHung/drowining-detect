@@ -40,8 +40,12 @@ def evaluate(model, data, split, output):
             "latency_p95_ms": float(np.percentile(times,95)), "speed": metrics.speed}
 
 def choose(results):
-    best_recall = max(r["per_class"]["drowning"]["recall"] for r in results)
-    candidates = [r for r in results if best_recall-r["per_class"]["drowning"]["recall"] <= .01]
+    # A model that over-predicts drowning can top drowning recall while failing the other classes,
+    # so only models within 2 mAP50 points of the best overall are eligible.
+    best_map = max(r["map50"] for r in results)
+    candidates = [r for r in results if best_map-r["map50"] <= .02]
+    best_recall = max(r["per_class"]["drowning"]["recall"] for r in candidates)
+    candidates = [r for r in candidates if best_recall-r["per_class"]["drowning"]["recall"] <= .01]
     best_precision = max(r["per_class"]["drowning"]["precision"] for r in candidates)
     candidates = [r for r in candidates if best_precision-r["per_class"]["drowning"]["precision"] <= .01]
     return min(candidates, key=lambda r:r["latency_p50_ms"])

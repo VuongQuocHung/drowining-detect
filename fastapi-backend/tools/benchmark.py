@@ -32,7 +32,7 @@ def main(args):
             with tempfile.TemporaryDirectory() as directory:
                 source = Path(directory)/"input.mp4"
                 shutil.copy2(args.video,source)
-                session = manager.create(app,"underwater",str(source),gan,settings.confidence, frame_limit=args.frames)
+                session = manager.create(app,args.model_type,str(source),gan,settings.confidence, frame_limit=args.frames)
                 session.thread.join()
                 records = [e for e in session.events if "metrics" in e]
                 report["runs"].append({"enhancement":gan, "status":session.status, "error":session.error,
@@ -48,6 +48,7 @@ if __name__ == "__main__":
     parser=argparse.ArgumentParser()
     parser.add_argument("--video",required=True)
     parser.add_argument("--frames",type=int,default=100)
+    parser.add_argument("--model-type",choices=("underwater","above-water"),default="underwater")
     parser.add_argument("--compare-gan",action="store_true")
     parser.add_argument("--output",default="benchmark.json")
     main(parser.parse_args())

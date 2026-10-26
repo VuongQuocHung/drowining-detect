@@ -1,0 +1,39 @@
+{
+  "source": "https://figshare.com/articles/dataset/Underwater_Drowning_Detection_Dataset/29497235?file=56039351",
+  "names": [
+    "swimming",
+    "struggling",
+    "drowning"
+  ],
+  "total_images": 5613,
+  "errors": [],
+  "split_counts": {
+    "train": 4488,
+    "val": 1125
+  },
+  "class_boxes": {
+    "swimming": 1871,
+    "struggling": 1871,
+    "drowning": 1871
+  },
+  "split_class_boxes": {
+    "train": {
+      "swimming": 1496,
+      "struggling": 1496,
+      "drowning": 1496
+    },
+    "val": {
+      "swimming": 375,
+      "struggling": 375,
+      "drowning": 375
+    },
+    "test": {}
+  },
+  "exact_cross_split": [],
+  "dropped_exact_duplicates": [],
+  "grouped": false,
+  "limitations": [
+    "Source groups unknown; original split retained. Independent labeled video evaluation required."
+  ],
+  "near_cross_split_count": 967664
+}

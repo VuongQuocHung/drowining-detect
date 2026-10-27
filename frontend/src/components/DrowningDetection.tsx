@@ -102,7 +102,11 @@ export default function DrowningDetection() {
     catch (err) { setError(String(err)); }
     finally { setBusy(false); }
   };
-  const people = image ? imagePeople : event?.detections || [];
+  const tracked = image ? imagePeople : event?.detections || [];
+  // Lost tracks without an active alert would pile up for 30 s each; a lost person who was alerting stays visible.
+  const alerting = (level?: string) => level === 'drowning_alert' || level === 'struggling_alert';
+  const people = tracked.filter(person => person.alert_level !== 'lost' || alerting(person.previous_level));
+  const hiddenLost = tracked.length - people.length;
   const metrics = event?.metrics;
   const inputStyle = 'border rounded px-3 py-2 bg-white disabled:opacity-50';
   return <div className="max-w-7xl mx-auto p-6 space-y-5">
@@ -139,11 +143,16 @@ export default function DrowningDetection() {
         <h3 className="font-bold">Trạng thái từng người</h3>
         {image && <p className="text-sm text-slate-600">Ảnh tĩnh: chỉ phân loại, không xác nhận cảnh báo theo thời gian.</p>}
         {!people.length && <p>Chưa có người được theo dõi; chưa thể kết luận an toàn.</p>}
-        {people.map(person => <div key={person.track_id} className={`rounded p-3 border ${person.alert_level === 'drowning_alert' ? 'bg-red-100 border-red-500' : person.alert_level === 'struggling_alert' ? 'bg-yellow-100 border-yellow-500' : 'bg-slate-50'}`}>
+        {people.map(person => {
+          const level = person.alert_level === 'lost' ? person.previous_level : person.alert_level;
+          return <div key={person.track_id} className={`rounded p-3 border ${level === 'drowning_alert' ? 'bg-red-100 border-red-500' : level === 'struggling_alert' ? 'bg-yellow-100 border-yellow-500' : 'bg-slate-50'}`}>
           <p className="font-semibold">ID {person.track_id} · {classNames[person.class] || person.class}</p>
-          <p>{person.alert_level ? levelNames[person.alert_level] || person.alert_level : 'Kết quả ảnh tĩnh'}</p>
+          <p>{person.alert_level ? levelNames[person.alert_level] || person.alert_level : 'Kết quả ảnh tĩnh'}
+            {person.alert_level === 'lost' && level && ` (trước đó: ${levelNames[level] || level})`}</p>
           <p className="text-sm">Confidence: {person.confidence === null ? '—' : `${(person.confidence * 100).toFixed(1)}%`}</p>
-        </div>)}
+        </div>;
+        })}
+        {hiddenLost > 0 && <p className="text-sm text-slate-500">{hiddenLost} ID vừa mất dấu khi không có cảnh báo (ẩn).</p>}
       </div>
     </div>
     {metrics && <div className="bg-white p-5 rounded-xl shadow grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">

@@ -69,6 +69,23 @@ describe('AI session dashboard', () => {
     expect(screen.getByRole('alert').textContent).toContain('Camera disconnected');
   });
 
+  it('hides lost tracks unless they were alerting', async () => {
+    request.mockResolvedValue(info);
+    render(<DrowningDetection />);
+    await waitFor(() => expect(FakeEvents.instances).toHaveLength(1));
+    const lost = (track_id: number, previous_level: string) =>
+      ({ track_id, class: 'unknown', confidence: null, alert_level: 'lost', previous_level, alarm: false });
+    act(() => FakeEvents.instances[0].emit({ ...event(1, 'normal', false),
+      detections: [{ track_id: 9, class: 'swimming', confidence: .8, alert_level: 'normal', alarm: false },
+        lost(1, 'normal'), lost(2, 'suspected'), lost(3, 'drowning_alert')] }));
+    expect(screen.getByText(/ID 9/)).toBeTruthy();
+    expect(screen.getByText(/ID 3/)).toBeTruthy();
+    expect(screen.queryByText(/ID 1 /)).toBeNull();
+    expect(screen.queryByText(/ID 2 /)).toBeNull();
+    expect(screen.getByText(/trước đó: Cảnh báo đuối nước/)).toBeTruthy();
+    expect(screen.getByText(/2 ID vừa mất dấu/)).toBeTruthy();
+  });
+
   it('uploads with GAN disabled by default and displays server conflict details', async () => {
     render(<DrowningDetection />);
     await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
